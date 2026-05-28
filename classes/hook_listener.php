@@ -53,7 +53,7 @@ class hook_listener {
         $mform->setDefault('apiendpoint', 'https://api.openai.com/v1');
         $mform->addRule('apiendpoint', get_string('required'), 'required', null, 'client');
 
-        // Model setting.
+        // Model setting (optional default; per-action model takes precedence when set).
         $mform->addElement(
             'text',
             'model',
@@ -62,7 +62,6 @@ class hook_listener {
         );
         $mform->setType('model', PARAM_TEXT);
         $mform->addHelpButton('model', 'model', 'aiprovider_openaicompatible');
-        $mform->addRule('model', get_string('required'), 'required', null, 'client');
 
         // Required setting to store OpenAI API key.
         $mform->addElement(
