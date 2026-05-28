@@ -30,7 +30,7 @@ use Psr\Http\Message\ResponseInterface;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class process_generate_image extends abstract_processor {
-    /** @var int The number of images to generate dall-e-3 only supports 1. */
+    /** @var int Number of images to generate. dall-e-3 only supports 1. */
     private int $numberimages = 1;
 
     /** @var string Response format: url or b64_json. */
@@ -40,13 +40,11 @@ class process_generate_image extends abstract_processor {
     protected function query_ai_api(): array {
         $response = parent::query_ai_api();
 
-        // If the request was successful, save the URL to a file.
         if ($response['success']) {
             $fileobj = $this->url_to_file(
                 $this->action->get_configuration('userid'),
-                $response['sourceurl']
+                $response['sourceurl'],
             );
-            // Add the file to the response, so the calling placement can do whatever they want with it.
             $response['draftfile'] = $fileobj;
         }
 
@@ -54,28 +52,22 @@ class process_generate_image extends abstract_processor {
     }
 
     /**
-     * Convert the given aspect ratio to an image size
-     * that is compatible with the OpenAI API.
+     * Convert aspect ratio to OpenAI image size.
      *
-     * @param string $ratio The aspect ratio of the image.
-     * @return string The size of the image.
+     * @param string $ratio
+     * @return string
      */
     private function calculate_size(string $ratio): string {
-        if ($ratio === 'square') {
-            $size = '1024x1024';
-        } else if ($ratio === 'landscape') {
-            $size = '1792x1024';
-        } else if ($ratio === 'portrait') {
-            $size = '1024x1792';
-        } else {
-            throw new \coding_exception('Invalid aspect ratio: ' . $ratio);
-        }
-        return $size;
+        return match ($ratio) {
+            'square' => '1024x1024',
+            'landscape' => '1792x1024',
+            'portrait' => '1024x1792',
+            default => throw new \coding_exception('Invalid aspect ratio: ' . $ratio),
+        };
     }
 
     #[\Override]
     protected function create_request_object(string $userid): RequestInterface {
-        // Create the request object.
         $requestobj = new \stdClass();
         $requestobj->model = $this->get_model();
         $requestobj->user = $userid;
@@ -85,55 +77,51 @@ class process_generate_image extends abstract_processor {
         $requestobj->response_format = $this->responseformat;
         $requestobj->size = $this->calculate_size($this->action->get_configuration('aspectratio'));
         $requestobj->style = $this->action->get_configuration('style');
-        // Append the extra model settings.
-        $modelsettings = $this->get_model_settings();
-        foreach ($modelsettings as $setting => $value) {
-            $requestobj->$setting = $value;
+
+        foreach ($this->get_extra_params() as $key => $value) {
+            $requestobj->{$key} = $value;
         }
+
         return new Request(
-            'POST',
-            'images/generations',
-            ['Content-Type' => 'application/json'],
-            json_encode($requestobj)
+            method: 'POST',
+            uri: 'images/generations',
+            body: json_encode($requestobj),
+            headers: [
+                'Content-Type' => 'application/json',
+            ],
         );
     }
 
     #[\Override]
     protected function handle_api_success(ResponseInterface $response): array {
-        $responsebody = $response->getBody();
-        $bodyobj = json_decode($responsebody->getContents());
+        $bodyobj = json_decode($response->getBody()->getContents());
 
         return [
             'success' => true,
             'sourceurl' => $bodyobj->data[0]->url,
-            'revisedprompt' => $bodyobj->data[0]->revised_prompt,
-            'model' => $this->get_model(), // There is no model in the response, use config.
+            'revisedprompt' => $bodyobj->data[0]->revised_prompt ?? '',
+            'model' => $this->get_model(),
             'errormessage' => '',
         ];
     }
 
     /**
-     * Convert the url for the image to a file.
-     *
-     * Placements can't interact with the provider AI directly,
-     * therefore we need to provide the image file in a format that can
-     * be used by placements. So we use the file API.
+     * Convert the URL for the image to a file in the user's draft area.
      *
      * @param int $userid The user id.
      * @param string $url The URL to the image.
-     * @return \stored_file The file object.
+     * @return \stored_file
      */
     private function url_to_file(int $userid, string $url): \stored_file {
         global $CFG;
 
         require_once("{$CFG->libdir}/filelib.php");
 
-        $parsedurl = parse_url($url, PHP_URL_PATH); // Parse the URL to get the path.
-        $filename = basename($parsedurl); // Get the basename of the path.
+        $parsedurl = parse_url($url, PHP_URL_PATH);
+        $filename = basename($parsedurl);
 
         $client = \core\di::get(http_client::class);
 
-        // Download the image and add the watermark.
         $tempdst = make_request_directory() . DIRECTORY_SEPARATOR . $filename;
         $client->get($url, [
             'sink' => $tempdst,
@@ -143,8 +131,6 @@ class process_generate_image extends abstract_processor {
         $image = new ai_image($tempdst);
         $image->add_watermark()->save();
 
-        // We put the file in the user draft area initially.
-        // Placements (on behalf of the user) can then move it to the correct location.
         $fileinfo = new \stdClass();
         $fileinfo->contextid = \context_user::instance($userid)->id;
         $fileinfo->filearea = 'draft';

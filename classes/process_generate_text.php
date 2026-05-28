@@ -30,23 +30,15 @@ use Psr\Http\Message\ResponseInterface;
 class process_generate_text extends abstract_processor {
 
     #[\Override]
-    protected function get_system_instruction(): string {
-        return $this->provider->actionconfig[$this->action::class]['settings']['systeminstruction'];
-    }
-
-    #[\Override]
     protected function create_request_object(string $userid): RequestInterface {
-        // Create the user object.
         $userobj = new \stdClass();
         $userobj->role = 'user';
         $userobj->content = $this->action->get_configuration('prompttext');
 
-        // Create the request object.
         $requestobj = new \stdClass();
         $requestobj->model = $this->get_model();
         $requestobj->user = $userid;
 
-        // If there is a system string available, use it.
         $systeminstruction = $this->get_system_instruction();
         if (!empty($systeminstruction)) {
             $systemobj = new \stdClass();
@@ -57,39 +49,38 @@ class process_generate_text extends abstract_processor {
             $requestobj->messages = [$userobj];
         }
 
-        // Append the extra model settings.
-        $modelsettings = $this->get_model_settings();
-        foreach ($modelsettings as $setting => $value) {
-            $requestobj->$setting = $value;
+        foreach ($this->get_extra_params() as $key => $value) {
+            $requestobj->{$key} = $value;
         }
 
         return new Request(
-            'POST',
-            'chat/completions',
-            ['Content-Type' => 'application/json'],
-            json_encode($requestobj)
+            method: 'POST',
+            uri: 'chat/completions',
+            body: json_encode($requestobj),
+            headers: [
+                'Content-Type' => 'application/json',
+            ],
         );
     }
 
     /**
      * Handle a successful response from the external AI api.
      *
-     * @param ResponseInterface $response The response object.
-     * @return array The response.
+     * @param ResponseInterface $response
+     * @return array
      */
     protected function handle_api_success(ResponseInterface $response): array {
-        $responsebody = $response->getBody();
-        $bodyobj = json_decode($responsebody->getContents());
+        $bodyobj = json_decode($response->getBody()->getContents());
 
         return [
             'success' => true,
             'id' => $bodyobj->id,
-            'fingerprint' => $bodyobj->system_fingerprint,
+            'fingerprint' => $bodyobj->system_fingerprint ?? '',
             'generatedcontent' => $bodyobj->choices[0]->message->content,
             'finishreason' => $bodyobj->choices[0]->finish_reason,
             'prompttokens' => $bodyobj->usage->prompt_tokens,
             'completiontokens' => $bodyobj->usage->completion_tokens,
-            'model' => $bodyobj->model ?? $this->get_model(), // Fallback to config model.
+            'model' => $bodyobj->model ?? $this->get_model(),
             'errormessage' => '',
         ];
     }
