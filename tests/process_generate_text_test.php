@@ -169,9 +169,9 @@ final class process_generate_text_test extends \advanced_testcase {
             $result = $method->invoke($processor, $response);
             $this->assertEquals($status, $result['errorcode']);
             if ($status == 500) {
-                $this->assertEquals('API Error: Internal Server Error (500)', $result['errormessage']);
+                $this->assertEquals('Internal Server Error', $result['errormessage']);
             } else if ($status == 503) {
-                $this->assertEquals('API Error: Service Unavailable (503)', $result['errormessage']);
+                $this->assertEquals('Service Unavailable', $result['errormessage']);
             } else {
                 $this->assertStringContainsString($response->getBody()->getContents(), $result['errormessage']);
             }
@@ -284,7 +284,7 @@ final class process_generate_text_test extends \advanced_testcase {
         $this->assertFalse($result->get_success());
         $this->assertEquals('generate_text', $result->get_actionname());
         $this->assertEquals($response['errorcode'], $result->get_errorcode());
-        // $this->assertEquals($response['error'], $result->get_error());
+        $this->assertEquals($response['error'], $result->get_error());
         $this->assertEquals($response['errormessage'], $result->get_errormessage());
     }
 
@@ -337,8 +337,7 @@ final class process_generate_text_test extends \advanced_testcase {
         $this->assertFalse($result->get_success());
         $this->assertEquals('generate_text', $result->get_actionname());
         $this->assertEquals(401, $result->get_errorcode());
-        $this->assertStringContainsString('Invalid Authentication', $result->get_errormessage());
-        $this->assertStringContainsString('API Error: Unauthorized (401)', $result->get_errormessage());
+        $this->assertEquals('Invalid Authentication', $result->get_errormessage());
     }
 
     /**
@@ -402,7 +401,7 @@ final class process_generate_text_test extends \advanced_testcase {
         $result = $processor->process();
         $this->assertEquals(429, $result->get_errorcode());
         $this->assertEquals(
-            expected: 'User rate limit exceeded',
+            expected: 'You have reached the maximum number of AI requests you can make in an hour. Try again later.',
             actual: $result->get_errormessage(),
         );
         $this->assertFalse($result->get_success());
@@ -499,7 +498,7 @@ final class process_generate_text_test extends \advanced_testcase {
         $result = $processor->process();
         $this->assertEquals(429, $result->get_errorcode());
         $this->assertEquals(
-            expected: 'Global rate limit exceeded',
+            expected: 'The AI service has reached the maximum number of site-wide requests per hour. Try again later.',
             actual: $result->get_errormessage(),
         );
         $this->assertFalse($result->get_success());
