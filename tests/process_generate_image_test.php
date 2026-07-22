@@ -22,7 +22,7 @@ use core_ai\provider;
 use GuzzleHttp\Psr7\Response;
 
 /**
- * Test response_base OpenAI provider methods.
+ * Test Generate image provider class for OpenAI-compatible provider methods.
  *
  * @package    aiprovider_openaicompatible
  * @copyright  2025   Adorsys GIS <gis-udm@adorsys.com>
@@ -37,9 +37,6 @@ final class process_generate_image_test extends \advanced_testcase {
     /** @var string A successful response in JSON format. */
     protected string $responsebodyjson;
 
-    /** @var \core_ai\manager */
-    private $manager;
-
     /** @var provider The provider that will process the action. */
     protected provider $provider;
 
@@ -53,16 +50,21 @@ final class process_generate_image_test extends \advanced_testcase {
         parent::setUp();
         $this->resetAfterTest();
         // Load a response body from a file.
-        $fixturepath = self::get_fixture_path('aiprovider_openaicompatible', 'image_request_success.json');
-        $this->responsebodyjson = file_get_contents($fixturepath);
-        $this->manager = \core\di::get(\core_ai\manager::class);
-        $this->provider = $this->create_provider(
-            actionclass: \core_ai\aiactions\generate_image::class,
-            actionconfig: [
-                'model' => 'gpt-image-1',
-            ],
+        $this->responsebodyjson = file_get_contents(
+            self::get_fixture_path('aiprovider_openaicompatible', 'image_request_success.json'),
         );
+        // Configure a valid endpoint and model for the action.
+        $this->set_provider_config(['apiendpoint' => 'https://api.example.com/v1']);
+        $this->set_action_config('generate_image', ['model' => 'gpt-image-1']);
+        $this->create_provider_object();
         $this->create_action();
+    }
+
+    /**
+     * Create the provider object.
+     */
+    private function create_provider_object(): void {
+        $this->provider = $this->create_provider();
     }
 
     /**
@@ -82,32 +84,77 @@ final class process_generate_image_test extends \advanced_testcase {
     }
 
     /**
-     * Test calculate_size with gpt-image-1 size mappings.
+     * Build a fake successful API response body containing a real image payload.
+     *
+     * @return string
      */
-    public function test_calculate_size(): void {
-        $processor = new process_generate_image($this->provider, $this->action);
-
-        // We're working with a private method here, so we need to use reflection.
-        $method = new \ReflectionMethod($processor, 'calculate_size');
-
-        $ratio = 'square';
-        $size = $method->invoke($processor, $ratio);
-        $this->assertEquals('1024x1024', $size);
-
-        $ratio = 'portrait';
-        $size = $method->invoke($processor, $ratio);
-        $this->assertEquals('1024x1536', $size);
-
-        $ratio = 'landscape';
-        $size = $method->invoke($processor, $ratio);
-        $this->assertEquals('1536x1024', $size);
+    private function get_image_response_body(): string {
+        return json_encode([
+            'created' => 1719140500,
+            'data' => [
+                (object) [
+                    'revised_prompt' => 'An image that represents the concept of a \'test\'.',
+                    'b64_json' => base64_encode(
+                        file_get_contents(self::get_fixture_path('aiprovider_openaicompatible', 'test.jpg')),
+                    ),
+                ],
+            ],
+        ]);
     }
 
     /**
-     * Test create_request_object with gpt-image-1.
-     * gpt-image-1: no response_format param, quality 'hd' maps to 'high'.
+     * Test calculate_size.
      */
-    public function test_create_request_object(): void {
+    public function test_calculate_size(): void {
+        $processor = new process_generate_image($this->provider, $this->action);
+        $method = new \ReflectionMethod($processor, 'calculate_size');
+
+        // DALL-E 3 sizes.
+        $this->set_action_config('generate_image', ['model' => 'dall-e-3']);
+        $this->create_provider_object();
+        $processor = new process_generate_image($this->provider, $this->action);
+        $this->assertEquals('1024x1024', $method->invoke($processor, 'square'));
+        $this->assertEquals('1024x1792', $method->invoke($processor, 'portrait'));
+        $this->assertEquals('1792x1024', $method->invoke($processor, 'landscape'));
+
+        // GPT image model sizes.
+        $this->set_action_config('generate_image', ['model' => 'gpt-image-1']);
+        $this->create_provider_object();
+        $processor = new process_generate_image($this->provider, $this->action);
+        $this->assertEquals('1024x1024', $method->invoke($processor, 'square'));
+        $this->assertEquals('1024x1536', $method->invoke($processor, 'portrait'));
+        $this->assertEquals('1536x1024', $method->invoke($processor, 'landscape'));
+    }
+
+    /**
+     * Test calculate_quality.
+     */
+    public function test_calculate_quality(): void {
+        $processor = new process_generate_image($this->provider, $this->action);
+        $method = new \ReflectionMethod($processor, 'calculate_quality');
+
+        // DALL-E models pass quality values through unchanged.
+        $this->set_action_config('generate_image', ['model' => 'dall-e-3']);
+        $this->create_provider_object();
+        $processor = new process_generate_image($this->provider, $this->action);
+        $this->assertEquals('standard', $method->invoke($processor, 'standard'));
+        $this->assertEquals('hd', $method->invoke($processor, 'hd'));
+
+        // GPT image models map quality values.
+        $this->set_action_config('generate_image', ['model' => 'gpt-image-1']);
+        $this->create_provider_object();
+        $processor = new process_generate_image($this->provider, $this->action);
+        $this->assertEquals('medium', $method->invoke($processor, 'standard'));
+        $this->assertEquals('high', $method->invoke($processor, 'hd'));
+    }
+
+    /**
+     * Test create_request_object for the dall-e-3 model.
+     */
+    public function test_create_request_object_dalle(): void {
+        $this->set_action_config('generate_image', ['model' => 'dall-e-3']);
+        $this->create_provider_object();
+
         $processor = new process_generate_image($this->provider, $this->action);
 
         // We're working with a private method here, so we need to use reflection.
@@ -117,57 +164,51 @@ final class process_generate_image_test extends \advanced_testcase {
         $requestdata = (object) json_decode($request->getBody()->getContents());
 
         $this->assertEquals('This is a test prompt', $requestdata->prompt);
-        $this->assertEquals('gpt-image-1', $requestdata->model);
+        $this->assertEquals('dall-e-3', $requestdata->model);
         $this->assertEquals('1', $requestdata->n);
-        // The gpt-image-1 model maps 'hd' quality to 'high'.
-        $this->assertEquals('high', $requestdata->quality);
-        // The gpt-image-1 model does not send response_format.
-        $this->assertObjectNotHasProperty('response_format', $requestdata);
+        $this->assertEquals('hd', $requestdata->quality);
+        $this->assertEquals('b64_json', $requestdata->response_format);
         $this->assertEquals('1024x1024', $requestdata->size);
+        $this->assertFalse(property_exists($requestdata, 'output_format'));
     }
 
     /**
-     * Test create_request_object with extra model settings.
+     * Test create_request_object for the gpt-image-1 model.
+     */
+    public function test_create_request_object_gptimage(): void {
+        $processor = new process_generate_image($this->provider, $this->action);
+
+        $method = new \ReflectionMethod($processor, 'create_request_object');
+        $request = $method->invoke($processor, 1);
+
+        $requestdata = (object) json_decode($request->getBody()->getContents());
+
+        $this->assertEquals('This is a test prompt', $requestdata->prompt);
+        $this->assertEquals('gpt-image-1', $requestdata->model);
+        $this->assertEquals('1', $requestdata->n);
+        // The 'hd' quality maps to 'high' for gpt-image-1.
+        $this->assertEquals('high', $requestdata->quality);
+        $this->assertEquals('1024x1024', $requestdata->size);
+        $this->assertEquals('png', $requestdata->output_format);
+        $this->assertFalse(property_exists($requestdata, 'response_format'));
+    }
+
+    /**
+     * Test create_request_object with extra model params.
      */
     public function test_create_request_object_with_model_settings(): void {
-        $this->provider = $this->create_provider(
-            actionclass: \core_ai\aiactions\generate_image::class,
-            actionconfig: [
-                'model' => 'gpt-image-1',
-                'temperature' => '0.5',
-                'max_completion_tokens' => '100',
-            ],
-        );
-        $processor = new process_generate_image($this->provider, $this->action);
+        $this->set_action_config('generate_image', [
+            'model' => 'gpt-image-1',
+            'modelextraparams' => '{"background": "transparent"}',
+        ]);
+        $this->create_provider_object();
 
-        // We're working with a private method here, so we need to use reflection.
+        $processor = new process_generate_image($this->provider, $this->action);
         $method = new \ReflectionMethod($processor, 'create_request_object');
         $request = $method->invoke($processor, 1);
 
-        $body = (object) json_decode($request->getBody()->getContents());
-
-        $this->assertEquals('gpt-image-1', $body->model);
-        $this->assertEquals('0.5', $body->temperature);
-        $this->assertEquals('100', $body->max_completion_tokens);
-
-        $this->provider = $this->create_provider(
-            actionclass: \core_ai\aiactions\generate_image::class,
-            actionconfig: [
-                'model' => 'my-custom-gpt',
-                'modelextraparams' => '{"temperature": 0.5,"max_completion_tokens": 100}',
-            ],
-        );
-        $processor = new process_generate_image($this->provider, $this->action);
-
-        // We're working with a private method here, so we need to use reflection.
-        $method = new \ReflectionMethod($processor, 'create_request_object');
-        $request = $method->invoke($processor, 1);
-
-        $body = (object) json_decode($request->getBody()->getContents());
-
-        $this->assertEquals('my-custom-gpt', $body->model);
-        $this->assertEquals('0.5', $body->temperature);
-        $this->assertEquals('100', $body->max_completion_tokens);
+        $requestdata = (object) json_decode($request->getBody()->getContents());
+        $this->assertEquals('transparent', $requestdata->background);
     }
 
     /**
@@ -199,6 +240,7 @@ final class process_generate_image_test extends \advanced_testcase {
 
         foreach ($responses as $status => $response) {
             $result = $method->invoke($processor, $response);
+            $this->assertFalse($result['success']);
             $this->assertEquals($status, $result['errorcode']);
             if ($status == 500) {
                 $this->assertEquals('Internal Server Error', $result['errormessage']);
@@ -212,7 +254,6 @@ final class process_generate_image_test extends \advanced_testcase {
 
     /**
      * Test the API success response handler method.
-     * Fixture now returns b64_json (gpt-image-1 style response).
      */
     public function test_handle_api_success(): void {
         $response = new Response(
@@ -228,24 +269,21 @@ final class process_generate_image_test extends \advanced_testcase {
         $result = $method->invoke($processor, $response);
 
         $this->assertTrue($result['success']);
+        $this->assertStringContainsString('An image that represents the concept of a \'test\'.', $result['revisedprompt']);
         $this->assertNotEmpty($result['b64json']);
-        $this->assertStringContainsString("concept of a 'test'.", $result['revisedprompt']);
-        $this->assertEquals('gpt-image-1', $result['model']);
     }
 
     /**
-     * Test query_ai_api for a successful call with b64_json response.
-     * gpt-image-1 returns b64_json inline — no secondary download needed.
+     * Test query_ai_api for a successful call.
      */
     public function test_query_ai_api_success(): void {
         // Mock the http client to return a successful response.
         ['mock' => $mock] = $this->get_mocked_http_client();
 
-        // The response from the API (b64_json inline).
         $mock->append(new Response(
             200,
             ['Content-Type' => 'application/json'],
-            $this->responsebodyjson,
+            $this->get_image_response_body(),
         ));
 
         $this->setAdminUser();
@@ -254,10 +292,8 @@ final class process_generate_image_test extends \advanced_testcase {
         $method = new \ReflectionMethod($processor, 'query_ai_api');
         $result = $method->invoke($processor);
 
-        $this->assertTrue($result['success']);
-        $this->assertNotEmpty($result['b64json']);
-        $this->assertStringContainsString("concept of a 'test'.", $result['revisedprompt']);
-        $this->assertEquals('gpt-image-1', $result['model']);
+        $this->assertStringContainsString('An image that represents the concept of a \'test\'.', $result['revisedprompt']);
+        $this->assertInstanceOf(\stored_file::class, $result['draftfile']);
     }
 
     /**
@@ -271,9 +307,8 @@ final class process_generate_image_test extends \advanced_testcase {
 
         $response = [
             'success' => true,
-            'revisedprompt' => "An image that represents the concept of a 'test'.",
-            'imageurl' => 'https://example.com/image.png',
-            'model' => 'gpt-image-1',
+            'revisedprompt' => 'An image that represents the concept of a \'test\'.',
+            'imageurl' => 'oaidalleapiprodscus.blob.core.windows.net',
         ];
 
         $result = $method->invoke($processor, $response);
@@ -283,7 +318,6 @@ final class process_generate_image_test extends \advanced_testcase {
         $this->assertEquals('generate_image', $result->get_actionname());
         $this->assertEquals($response['success'], $result->get_success());
         $this->assertEquals($response['revisedprompt'], $result->get_response_data()['revisedprompt']);
-        $this->assertEquals($response['model'], $result->get_response_data()['model']);
     }
 
     /**
@@ -298,8 +332,7 @@ final class process_generate_image_test extends \advanced_testcase {
         $response = [
             'success' => false,
             'errorcode' => 500,
-            'error' => 'Internal server error',
-            'errormessage' => 'Try again later',
+            'errormessage' => 'Internal server error.',
         ];
 
         $result = $method->invoke($processor, $response);
@@ -312,7 +345,29 @@ final class process_generate_image_test extends \advanced_testcase {
     }
 
     /**
-     * Test process with a URL-based response (sourceurl fallback path).
+     * Test create_file_from_response.
+     */
+    public function test_create_file_from_response(): void {
+        // Log in user.
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+
+        $processor = new process_generate_image($this->provider, $this->action);
+        // We're working with a private method here, so we need to use reflection.
+        $method = new \ReflectionMethod($processor, 'create_file_from_response');
+
+        $userid = $user->id;
+        $response = [
+            'b64json' => base64_encode(file_get_contents(self::get_fixture_path('aiprovider_openaicompatible', 'test.jpg'))),
+            'output_format' => 'jpg',
+        ];
+        $fileobj = $method->invoke($processor, $userid, $response);
+
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{16}\.jpg$/', $fileobj->get_filename());
+    }
+
+    /**
+     * Test process.
      */
     public function test_process(): void {
         // Log in user.
@@ -321,47 +376,11 @@ final class process_generate_image_test extends \advanced_testcase {
         // Mock the http client to return a successful response.
         ['mock' => $mock] = $this->get_mocked_http_client();
 
-        $url = 'https://example.com/test.jpg';
-
-        // The response from the API (URL-based, tests the sourceurl fallback).
         $mock->append(new Response(
             200,
             ['Content-Type' => 'application/json'],
-            json_encode([
-                'created' => 1719140500,
-                'data' => [
-                    (object) [
-                        'revised_prompt' => "An image that represents the concept of a 'test'.",
-                        'url' => $url,
-                    ],
-                ],
-            ]),
+            $this->get_image_response_body(),
         ));
-
-        // The image downloaded from the server successfully.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'image/jpeg'],
-            \GuzzleHttp\Psr7\Utils::streamFor(fopen(self::get_fixture_path('aiprovider_openaicompatible', 'test.jpg'), 'r')),
-        ));
-
-        // Create a request object.
-        $contextid = 1;
-        $userid = 1;
-        $prompttext = 'This is a test prompt';
-        $aspectratio = 'square';
-        $quality = 'hd';
-        $numimages = 1;
-        $style = 'vivid';
-        $this->action = new \core_ai\aiactions\generate_image(
-            contextid: $contextid,
-            userid: $userid,
-            prompttext: $prompttext,
-            quality: $quality,
-            aspectratio: $aspectratio,
-            numimages: $numimages,
-            style: $style,
-        );
 
         $processor = new process_generate_image($this->provider, $this->action);
         $result = $processor->process();
@@ -369,8 +388,11 @@ final class process_generate_image_test extends \advanced_testcase {
         $this->assertInstanceOf(\core_ai\aiactions\responses\response_base::class, $result);
         $this->assertTrue($result->get_success());
         $this->assertEquals('generate_image', $result->get_actionname());
-        $this->assertStringContainsString("concept of a 'test'.", $result->get_response_data()['revisedprompt']);
-        $this->assertEquals($url, $result->get_response_data()['sourceurl']);
+        $this->assertEquals(
+            'An image that represents the concept of a \'test\'.',
+            $result->get_response_data()['revisedprompt'],
+        );
+        $this->assertInstanceOf(\stored_file::class, $result->get_response_data()['draftfile']);
     }
 
     /**
@@ -380,10 +402,9 @@ final class process_generate_image_test extends \advanced_testcase {
         // Log in user.
         $this->setUser($this->getDataGenerator()->create_user());
 
-        // Mock the http client to return a successful response.
+        // Mock the http client to return an error response.
         ['mock' => $mock] = $this->get_mocked_http_client();
 
-        // The response from OpenAI.
         $mock->append(new Response(
             401,
             ['Content-Type' => 'application/json'],
@@ -398,8 +419,6 @@ final class process_generate_image_test extends \advanced_testcase {
         $this->assertEquals('generate_image', $result->get_actionname());
         $this->assertEquals(401, $result->get_errorcode());
         $this->assertEquals('Invalid Authentication', $result->get_errormessage());
-        // The failing endpoint is logged for developers, not exposed in the user-facing error.
-        $this->assertDebuggingCalled();
     }
 
     /**
@@ -415,138 +434,47 @@ final class process_generate_image_test extends \advanced_testcase {
         $clock = $this->mock_clock_with_frozen();
 
         // Set the user rate limiter.
-        $config = [
-            'apikey' => '123',
-            'enableuserratelimit' => true,
-            'userratelimit' => 1,
-        ];
-        $provider = $this->manager->create_provider_instance(
-            classname: '\aiprovider_openaicompatible\provider',
-            name: 'dummy',
-            config: $config,
-            actionconfig: [
-                \core_ai\aiactions\generate_image::class => [
-                    'settings' => [
-                        'model' => 'gpt-image-1',
-                        'endpoint' => "https://api.openai.com/v1/images/generations",
-                    ],
-                ],
-            ],
-        );
+        set_config('enableuserratelimit', 1, 'aiprovider_openaicompatible');
+        set_config('userratelimit', 1, 'aiprovider_openaicompatible');
 
         // Mock the http client to return a successful response.
         ['mock' => $mock] = $this->get_mocked_http_client();
-        $url = 'https://example.com/test.jpg';
 
         // Case 1: User rate limit has not been reached.
+        $this->create_provider_object();
         $this->create_action($user1->id);
-        // The response from OpenAI.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'application/json'],
-            json_encode([
-                'created' => 1719140500,
-                'data' => [
-                    (object) [
-                        'revised_prompt' => "An image that represents the concept of a 'test'.",
-                        'url' => $url,
-                    ],
-                ],
-            ]),
-        ));
-        // The image downloaded from the server successfully.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'image/jpeg'],
-            \GuzzleHttp\Psr7\Utils::streamFor(fopen(self::get_fixture_path('aiprovider_openaicompatible', 'test.jpg'), 'r')),
-        ));
-        $processor = new process_generate_image($provider, $this->action);
+        $mock->append(new Response(200, ['Content-Type' => 'application/json'], $this->get_image_response_body()));
+        $processor = new process_generate_image($this->provider, $this->action);
         $result = $processor->process();
         $this->assertTrue($result->get_success());
 
         // Case 2: User rate limit has been reached.
         $clock->bump(HOURSECS - 10);
-        // The response from OpenAI.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'application/json'],
-            json_encode([
-                'created' => 1719140500,
-                'data' => [
-                    (object) [
-                        'revised_prompt' => "An image that represents the concept of a 'test'.",
-                        'url' => $url,
-                    ],
-                ],
-            ]),
-        ));
-        // The image downloaded from the server successfully.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'image/jpeg'],
-            \GuzzleHttp\Psr7\Utils::streamFor(fopen(self::get_fixture_path('aiprovider_openaicompatible', 'test.jpg'), 'r')),
-        ));
+        $mock->append(new Response(200, ['Content-Type' => 'application/json'], $this->get_image_response_body()));
+        $this->create_provider_object();
         $this->create_action($user1->id);
-        $processor = new process_generate_image($provider, $this->action);
+        $processor = new process_generate_image($this->provider, $this->action);
         $result = $processor->process();
         $this->assertEquals(429, $result->get_errorcode());
-        $this->assertEquals($this->get_user_ratelimit_message(), $result->get_errormessage());
+        $this->assertEquals('User rate limit exceeded', $result->get_errormessage());
         $this->assertFalse($result->get_success());
 
         // Case 3: User rate limit has not been reached for a different user.
-        // Log in user2.
         $this->setUser($user2);
+        $this->create_provider_object();
         $this->create_action($user2->id);
-        // The response from OpenAI.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'application/json'],
-            json_encode([
-                'created' => 1719140500,
-                'data' => [
-                    (object) [
-                        'revised_prompt' => "An image that represents the concept of a 'test'.",
-                        'url' => $url,
-                    ],
-                ],
-            ]),
-        ));
-        // The image downloaded from the server successfully.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'image/jpeg'],
-            \GuzzleHttp\Psr7\Utils::streamFor(fopen(self::get_fixture_path('aiprovider_openaicompatible', 'test.jpg'), 'r')),
-        ));
+        $mock->append(new Response(200, ['Content-Type' => 'application/json'], $this->get_image_response_body()));
         $processor = new process_generate_image($this->provider, $this->action);
         $result = $processor->process();
         $this->assertTrue($result->get_success());
 
         // Case 4: Time window has passed, user rate limit should be reset.
         $clock->bump(11);
-        // Log in user1.
         $this->setUser($user1);
-        // The response from OpenAI.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'application/json'],
-            json_encode([
-                'created' => 1719140500,
-                'data' => [
-                    (object) [
-                        'revised_prompt' => "An image that represents the concept of a 'test'.",
-                        'url' => $url,
-                    ],
-                ],
-            ]),
-        ));
-        // The image downloaded from the server successfully.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'image/jpeg'],
-            \GuzzleHttp\Psr7\Utils::streamFor(fopen(self::get_fixture_path('aiprovider_openaicompatible', 'test.jpg'), 'r')),
-        ));
+        $mock->append(new Response(200, ['Content-Type' => 'application/json'], $this->get_image_response_body()));
+        $this->create_provider_object();
         $this->create_action($user1->id);
-        $processor = new process_generate_image($provider, $this->action);
+        $processor = new process_generate_image($this->provider, $this->action);
         $result = $processor->process();
         $this->assertTrue($result->get_success());
     }
@@ -564,141 +492,47 @@ final class process_generate_image_test extends \advanced_testcase {
         $clock = $this->mock_clock_with_frozen();
 
         // Set the global rate limiter.
-        $config = [
-            'apikey' => '123',
-            'enableglobalratelimit' => true,
-            'globalratelimit' => 1,
-        ];
-        $provider = $this->manager->create_provider_instance(
-            classname: '\aiprovider_openaicompatible\provider',
-            name: 'dummy',
-            config: $config,
-            actionconfig: [
-                \core_ai\aiactions\generate_image::class => [
-                    'settings' => [
-                        'model' => 'gpt-image-1',
-                        'endpoint' => "https://api.openai.com/v1/images/generations",
-                    ],
-                ],
-            ],
-        );
+        set_config('enableglobalratelimit', 1, 'aiprovider_openaicompatible');
+        set_config('globalratelimit', 1, 'aiprovider_openaicompatible');
 
         // Mock the http client to return a successful response.
         ['mock' => $mock] = $this->get_mocked_http_client();
-        $url = 'https://example.com/test.jpg';
 
         // Case 1: Global rate limit has not been reached.
+        $this->create_provider_object();
         $this->create_action($user1->id);
-        // The response from OpenAI.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'application/json'],
-            json_encode([
-                'created' => 1719140500,
-                'data' => [
-                    (object) [
-                        'revised_prompt' => "An image that represents the concept of a 'test'.",
-                        'url' => $url,
-                    ],
-                ],
-            ]),
-        ));
-        // The image downloaded from the server successfully.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'image/jpeg'],
-            \GuzzleHttp\Psr7\Utils::streamFor(fopen(self::get_fixture_path('aiprovider_openaicompatible', 'test.jpg'), 'r')),
-        ));
-        $processor = new process_generate_image($provider, $this->action);
+        $mock->append(new Response(200, ['Content-Type' => 'application/json'], $this->get_image_response_body()));
+        $processor = new process_generate_image($this->provider, $this->action);
         $result = $processor->process();
         $this->assertTrue($result->get_success());
 
         // Case 2: Global rate limit has been reached.
         $clock->bump(HOURSECS - 10);
-        // The response from OpenAI.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'application/json'],
-            json_encode([
-                'created' => 1719140500,
-                'data' => [
-                    (object) [
-                        'revised_prompt' => "An image that represents the concept of a 'test'.",
-                        'url' => $url,
-                    ],
-                ],
-            ]),
-        ));
-        // The image downloaded from the server successfully.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'image/jpeg'],
-            \GuzzleHttp\Psr7\Utils::streamFor(fopen(self::get_fixture_path('aiprovider_openaicompatible', 'test.jpg'), 'r')),
-        ));
-        $this->provider = $this->create_provider(\core_ai\aiactions\generate_image::class);
+        $mock->append(new Response(200, ['Content-Type' => 'application/json'], $this->get_image_response_body()));
+        $this->create_provider_object();
         $this->create_action($user1->id);
-        $processor = new process_generate_image($provider, $this->action);
+        $processor = new process_generate_image($this->provider, $this->action);
         $result = $processor->process();
         $this->assertEquals(429, $result->get_errorcode());
-        $this->assertEquals($this->get_global_ratelimit_message(), $result->get_errormessage());
+        $this->assertEquals('Global rate limit exceeded', $result->get_errormessage());
         $this->assertFalse($result->get_success());
 
         // Case 3: Global rate limit has been reached for a different user too.
-        // Log in user2.
         $this->setUser($user2);
-        $this->provider = $this->create_provider(\core_ai\aiactions\generate_image::class);
+        $this->create_provider_object();
         $this->create_action($user2->id);
-        // The response from OpenAI.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'application/json'],
-            json_encode([
-                'created' => 1719140500,
-                'data' => [
-                    (object) [
-                        'revised_prompt' => "An image that represents the concept of a 'test'.",
-                        'url' => $url,
-                    ],
-                ],
-            ]),
-        ));
-        // The image downloaded from the server successfully.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'image/jpeg'],
-            \GuzzleHttp\Psr7\Utils::streamFor(fopen(self::get_fixture_path('aiprovider_openaicompatible', 'test.jpg'), 'r')),
-        ));
-        $processor = new process_generate_image($provider, $this->action);
+        $mock->append(new Response(200, ['Content-Type' => 'application/json'], $this->get_image_response_body()));
+        $processor = new process_generate_image($this->provider, $this->action);
         $result = $processor->process();
         $this->assertFalse($result->get_success());
 
         // Case 4: Time window has passed, global rate limit should be reset.
         $clock->bump(11);
-        // Log in user1.
         $this->setUser($user1);
-        // The response from OpenAI.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'application/json'],
-            json_encode([
-                'created' => 1719140500,
-                'data' => [
-                    (object) [
-                        'revised_prompt' => "An image that represents the concept of a 'test'.",
-                        'url' => $url,
-                    ],
-                ],
-            ]),
-        ));
-        // The image downloaded from the server successfully.
-        $mock->append(new Response(
-            200,
-            ['Content-Type' => 'image/jpeg'],
-            \GuzzleHttp\Psr7\Utils::streamFor(fopen(self::get_fixture_path('aiprovider_openaicompatible', 'test.jpg'), 'r')),
-        ));
-        $this->provider = $this->create_provider(\core_ai\aiactions\generate_image::class);
+        $mock->append(new Response(200, ['Content-Type' => 'application/json'], $this->get_image_response_body()));
+        $this->create_provider_object();
         $this->create_action($user1->id);
-        $processor = new process_generate_image($provider, $this->action);
+        $processor = new process_generate_image($this->provider, $this->action);
         $result = $processor->process();
         $this->assertTrue($result->get_success());
     }

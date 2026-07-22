@@ -22,56 +22,48 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-$string['action:explain_text:endpoint'] = 'API endpoint';
-$string['action:explain_text:model'] = 'AI model';
-$string['action:explain_text:model_help'] = 'The model used to explain the provided text.';
-$string['action:explain_text:systeminstruction'] = 'System instruction';
-$string['action:explain_text:systeminstruction_help'] = 'This instruction is sent to the AI model along with the user\'s prompt. Editing this instruction is not recommended unless absolutely required.';
 $string['action:generate_image:endpoint'] = 'API endpoint';
+$string['action:generate_image:endpoint_desc'] = 'The full URL of the image generation API, used as entered. Leave empty to use the provider-level API endpoint with /images/generations appended.';
 $string['action:generate_image:model'] = 'AI model';
-$string['action:generate_image:model_help'] = 'The model used to generate images from user prompts.';
+$string['action:generate_image:model_desc'] = 'The model used to generate images, for example gpt-image-1 or dall-e-3.';
 $string['action:generate_text:endpoint'] = 'API endpoint';
+$string['action:generate_text:endpoint_desc'] = 'The full URL of the chat completions API, used as entered. Leave empty to use the provider-level API endpoint with /chat/completions appended.';
 $string['action:generate_text:model'] = 'AI model';
-$string['action:generate_text:model_help'] = 'The model used to generate the text response.';
+$string['action:generate_text:model_desc'] = 'The model used to generate the text response, for example gpt-4o.';
 $string['action:generate_text:systeminstruction'] = 'System instruction';
-$string['action:generate_text:systeminstruction_help'] = 'This instruction is sent to the AI model along with the user\'s prompt. Editing this instruction is not recommended unless absolutely required.';
+$string['action:generate_text:systeminstruction_desc'] = 'This instruction is sent to the AI model along with the user\'s prompt. Editing this instruction is not recommended unless absolutely required.';
 $string['action:summarise_text:endpoint'] = 'API endpoint';
+$string['action:summarise_text:endpoint_desc'] = 'The full URL of the chat completions API, used as entered. Leave empty to use the provider-level API endpoint with /chat/completions appended.';
 $string['action:summarise_text:model'] = 'AI model';
-$string['action:summarise_text:model_help'] = 'The model used to summarise the provided text.';
+$string['action:summarise_text:model_desc'] = 'The model used to summarise the provided text, for example gpt-4o.';
 $string['action:summarise_text:systeminstruction'] = 'System instruction';
-$string['action:summarise_text:systeminstruction_help'] = 'This instruction is sent to the AI model along with the user\'s prompt. Editing this instruction is not recommended unless absolutely required.';
-$string['apiendpoint'] = 'API Endpoint';
-$string['apiendpoint_help'] = 'The base URL for your OpenAI-compatible API (e.g., https://api.openai.com/v1 or https://ai.kivoyo.com/api/v1).';
-$string['apikey'] = 'OpenAI compatible API key';
-$string['apikey_help'] = 'The API key used to authenticate requests to your OpenAI-compatible API endpoint.';
-$string['custom_model_name'] = 'Model';
-$string['extraparams'] = 'Extra parameters';
-$string['extraparams_help'] = 'Extra parameters can be configured here. We support JSON format. For example:
+$string['action:summarise_text:systeminstruction_desc'] = 'The instruction sent to the AI model when summarising text.';
+$string['apiendpoint'] = 'API endpoint';
+$string['apiendpoint_desc'] = 'The base URL of the OpenAI-compatible API (e.g. https://api.openai.com/v1), without the action path. Each action appends its own path, or can override this with a full URL.';
+$string['apikey'] = 'API key';
+$string['apikey_desc'] = 'The API key used to authenticate with the OpenAI-compatible API.';
+$string['enableglobalratelimit'] = 'Set site-wide rate limit';
+$string['enableglobalratelimit_desc'] = 'Limit the number of requests that the provider can receive across the entire site every hour.';
+$string['enableuserratelimit'] = 'Set user rate limit';
+$string['enableuserratelimit_desc'] = 'Limit the number of requests each user can make to the provider every hour.';
+$string['globalratelimit'] = 'Maximum number of site-wide requests';
+$string['globalratelimit_desc'] = 'The number of site-wide requests allowed per hour.';
+$string['modelextraparams'] = 'Extra parameters';
+$string['modelextraparams_desc'] = 'Additional request parameters as JSON, merged into every request. Example:
 <pre>
 {
     "temperature": 0.5,
     "max_completion_tokens": 100
 }
 </pre>';
-$string['invalidjson'] = 'Invalid JSON string';
-$string['model'] = 'Model Name';
-$string['model_help'] = 'The ID of the model to use (e.g., gpt-4, claude-3-opus, llama-3).';
-$string['orgid'] = 'OpenAI compatible organization ID';
-$string['orgid_help'] = 'The organization ID used to authenticate requests to your OpenAI-compatible API endpoint. Leave blank if not required by your provider.';
+$string['orgid'] = 'Organization ID';
+$string['orgid_desc'] = 'Optional organization ID sent with the request.';
 $string['pluginname'] = 'OpenAI Compatible API provider';
-$string['privacy:metadata'] = 'The OpenAI API provider plugin does not store any personal data.';
-$string['privacy:metadata:aiprovider_openaicompatible:externalpurpose'] = 'This information is sent to the OpenAI API in order for a response to be generated. Your OpenAI account settings may change how OpenAI stores and retains this data. No user data is explicitly sent to OpenAI or stored in Moodle LMS by this plugin.';
+$string['privacy:metadata'] = 'The OpenAI compatible API provider plugin does not store any personal data.';
+$string['privacy:metadata:aiprovider_openaicompatible:externalpurpose'] = 'This information is sent to the external API in order for a response to be generated. The provider\'s account settings may change how data is stored and retained. No user data is explicitly stored in Moodle by this plugin.';
 $string['privacy:metadata:aiprovider_openaicompatible:model'] = 'The model used to generate the response.';
 $string['privacy:metadata:aiprovider_openaicompatible:numberimages'] = 'When generating images the number of images used in the response.';
 $string['privacy:metadata:aiprovider_openaicompatible:prompttext'] = 'The user entered text prompt used to generate the response.';
 $string['privacy:metadata:aiprovider_openaicompatible:responseformat'] = 'The format of the response. When generating images.';
-$string['settings'] = 'Settings';
-$string['settings_frequency_penalty'] = 'frequency_penalty';
-$string['settings_frequency_penalty_help'] = 'The frequency penalty adjusts how often words are repeated. The higher the penalty, the less repetitions in the generated text.';
-$string['settings_help'] = 'Adjust the settings below to customise how requests are sent to OpenAI.';
-$string['settings_max_completion_tokens'] = 'max_completion_tokens';
-$string['settings_max_completion_tokens_help'] = 'The maximum number of tokens used in the generated text.';
-$string['settings_presence_penalty'] = 'presence_penalty';
-$string['settings_presence_penalty_help'] = 'The presence penalty encourages the model to use new words by increasing the likelihood of choosing words it hasn\'t used before. A higher value makes the generated text more diverse, while a lower value allows more repetition.';
-$string['settings_top_p'] = 'top_p';
-$string['settings_top_p_help'] = 'top_p (nucleus sampling) determines how many possible words to consider. A high value (e.g. 0.9) means the model looks at more words, which makes the generated text more diverse.';
+$string['userratelimit'] = 'Maximum number of requests per user';
+$string['userratelimit_desc'] = 'The number of requests allowed per hour, per user.';

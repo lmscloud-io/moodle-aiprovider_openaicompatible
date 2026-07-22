@@ -25,7 +25,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'aiprovider_openaicompatible';
-$plugin->version = 2026060200;
-$plugin->requires = 2025041400;
+$plugin->version = 2025121001; // Increment by 1! Can not exceed 2025121100.
+$plugin->requires = 2024100700;
 $plugin->maturity = MATURITY_STABLE;
-$plugin->supported = [500, 502];
+$plugin->supported = [405, 405];

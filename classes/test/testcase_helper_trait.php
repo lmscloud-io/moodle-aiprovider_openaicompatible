@@ -17,7 +17,11 @@
 namespace aiprovider_openaicompatible\test;
 
 /**
- * Trait for test cases.
+ * Shared helpers for the aiprovider_openaicompatible test suite.
+ *
+ * On Moodle 4.5 the provider is instantiated with `new provider()` and all of its
+ * configuration - both provider-level and per-action - lives in plugin config under the
+ * component `aiprovider_openaicompatible`. These helpers centralise that setup.
  *
  * @package    aiprovider_openaicompatible
  * @copyright  2025   Adorsys GIS <gis-udm@adorsys.com>
@@ -25,70 +29,37 @@ namespace aiprovider_openaicompatible\test;
  */
 trait testcase_helper_trait {
     /**
-     * Create the provider object.
+     * Create a fresh provider instance reading the current plugin config.
      *
-     * @param string $actionclass The action class to use.
-     * @param array $actionconfig The action configuration to use.
+     * @return \aiprovider_openaicompatible\provider
      */
-    public function create_provider(
-        string $actionclass,
-        array $actionconfig = [],
-    ): \core_ai\provider {
-        $manager = \core\di::get(\core_ai\manager::class);
-        $config = [
-            'apikey' => '123',
-            'enableuserratelimit' => true,
-            'userratelimit' => 1,
-            'enableglobalratelimit' => true,
-            'globalratelimit' => 1,
-        ];
-        $defaultactionconfig = [
-            $actionclass => [
-                'settings' => [
-                    'model' => 'gpt-4o',
-                    'endpoint' => "https://api.openai.com/v1/chat/completions",
-                ],
-            ],
-        ];
-        foreach ($actionconfig as $key => $value) {
-            $defaultactionconfig[$actionclass]['settings'][$key] = $value;
-        }
-        $provider = $manager->create_provider_instance(
-            classname: '\aiprovider_openaicompatible\provider',
-            name: 'dummy',
-            config: $config,
-            actionconfig: $defaultactionconfig,
-        );
-
-        return $provider;
+    protected function create_provider(): \aiprovider_openaicompatible\provider {
+        return new \aiprovider_openaicompatible\provider();
     }
 
     /**
-     * Expected error message when a user rate limit is reached.
+     * Set provider-level plugin config keys.
      *
-     * The wording is produced by core and changed in Moodle 5.1 (localised strings); Moodle 5.0
-     * returned fixed English text. Resolve the correct value for the running version.
-     *
-     * @return string
+     * @param array $config Key => value pairs stored under the aiprovider_openaicompatible component.
      */
-    public function get_user_ratelimit_message(): string {
-        global $CFG;
-        if ($CFG->branch < 501) {
-            return 'User rate limit exceeded';
+    protected function set_provider_config(array $config): void {
+        foreach ($config as $key => $value) {
+            set_config($key, $value, 'aiprovider_openaicompatible');
         }
-        return 'You have reached the maximum number of AI requests you can make in an hour. Try again later.';
     }
 
     /**
-     * Expected error message when the global (site-wide) rate limit is reached.
+     * Set per-action plugin config keys.
      *
-     * @return string
+     * Per-action settings are stored globally as `action_{actionname}_{key}` under the
+     * aiprovider_openaicompatible component.
+     *
+     * @param string $actionname The short action name, e.g. generate_text.
+     * @param array $config Key => value pairs, e.g. ['model' => 'gpt-4o'].
      */
-    public function get_global_ratelimit_message(): string {
-        global $CFG;
-        if ($CFG->branch < 501) {
-            return 'Global rate limit exceeded';
+    protected function set_action_config(string $actionname, array $config): void {
+        foreach ($config as $key => $value) {
+            set_config("action_{$actionname}_{$key}", $value, 'aiprovider_openaicompatible');
         }
-        return 'The AI service has reached the maximum number of site-wide requests per hour. Try again later.';
     }
 }

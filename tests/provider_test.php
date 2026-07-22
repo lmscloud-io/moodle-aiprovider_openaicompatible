@@ -16,8 +16,10 @@
 
 namespace aiprovider_openaicompatible;
 
+use aiprovider_openaicompatible\test\testcase_helper_trait;
+
 /**
- * Test OpenAI provider methods.
+ * Test OpenAI-compatible provider methods.
  *
  * @package    aiprovider_openaicompatible
  * @copyright  2025   Adorsys GIS <gis-udm@adorsys.com>
@@ -25,45 +27,27 @@ namespace aiprovider_openaicompatible;
  * @covers     \aiprovider_openaicompatible\provider
  */
 final class provider_test extends \advanced_testcase {
-    /** @var \core_ai\manager */
-    private $manager;
-
-    /** @var \core_ai\provider */
-    private $provider;
+    use testcase_helper_trait;
 
     /**
-     * Overriding setUp() function to always reset after tests.
-     */
-    public function setUp(): void {
-        parent::setUp();
-        $this->resetAfterTest();
-
-        // Create the provider instance.
-        $this->manager = \core\di::get(\core_ai\manager::class);
-        $this->provider = $this->manager->create_provider_instance(
-            classname: '\aiprovider_openaicompatible\provider',
-            name: 'dummy',
-        );
-    }
-
-    /**
-     * Test get_action_list
+     * Test get_action_list.
      */
     public function test_get_action_list(): void {
-        $actionlist = $this->provider->get_action_list();
+        $provider = new provider();
+        $actionlist = $provider->get_action_list();
         $this->assertIsArray($actionlist);
-        $this->assertCount(4, $actionlist);
+        $this->assertCount(3, $actionlist);
         $this->assertContains(\core_ai\aiactions\generate_text::class, $actionlist);
         $this->assertContains(\core_ai\aiactions\generate_image::class, $actionlist);
         $this->assertContains(\core_ai\aiactions\summarise_text::class, $actionlist);
-        $this->assertContains(\core_ai\aiactions\explain_text::class, $actionlist);
     }
 
     /**
      * Test generate_userid.
      */
     public function test_generate_userid(): void {
-        $userid = $this->provider->generate_userid(1);
+        $provider = new provider();
+        $userid = $provider->generate_userid(1);
 
         // Assert that the generated userid is a string of proper length.
         $this->assertIsString($userid);
@@ -71,22 +55,61 @@ final class provider_test extends \advanced_testcase {
     }
 
     /**
-     * Test is_request_allowed.
+     * Test get_api_endpoint.
+     */
+    public function test_get_api_endpoint(): void {
+        $this->resetAfterTest();
+
+        // Reflects the configured value.
+        set_config('apiendpoint', 'https://api.example.com/v1', 'aiprovider_openaicompatible');
+        $provider = new provider();
+        $this->assertSame('https://api.example.com/v1', $provider->get_api_endpoint());
+    }
+
+    /**
+     * Test add_authentication_headers.
+     */
+    public function test_add_authentication_headers(): void {
+        $this->resetAfterTest();
+
+        set_config('apikey', 'test-api-key', 'aiprovider_openaicompatible');
+        set_config('orgid', 'test-org', 'aiprovider_openaicompatible');
+
+        $provider = new provider();
+        $request = new \GuzzleHttp\Psr7\Request('POST', 'https://api.example.com/v1/chat/completions');
+        $request = $provider->add_authentication_headers($request);
+
+        $this->assertEquals('Bearer test-api-key', $request->getHeaderLine('Authorization'));
+        $this->assertEquals('test-org', $request->getHeaderLine('OpenAI-Organization'));
+    }
+
+    /**
+     * Test add_authentication_headers without an organisation id.
+     */
+    public function test_add_authentication_headers_no_orgid(): void {
+        $this->resetAfterTest();
+
+        set_config('apikey', 'test-api-key', 'aiprovider_openaicompatible');
+
+        $provider = new provider();
+        $request = new \GuzzleHttp\Psr7\Request('POST', 'https://api.example.com/v1/chat/completions');
+        $request = $provider->add_authentication_headers($request);
+
+        $this->assertEquals('Bearer test-api-key', $request->getHeaderLine('Authorization'));
+        $this->assertFalse($request->hasHeader('OpenAI-Organization'));
+    }
+
+    /**
+     * Test is_request_allowed with user and global rate limits.
      */
     public function test_is_request_allowed(): void {
-        global $CFG;
-        // Create the provider instance.
-        $config = [
-            'enableuserratelimit' => true,
-            'userratelimit' => 3,
-            'enableglobalratelimit' => true,
-            'globalratelimit' => 5,
-        ];
-        $provider = $this->manager->create_provider_instance(
-            classname: '\aiprovider_openaicompatible\provider',
-            name: 'dummy',
-            config: $config,
-        );
+        $this->resetAfterTest();
+
+        // Set plugin config rate limiter settings.
+        set_config('enableglobalratelimit', 1, 'aiprovider_openaicompatible');
+        set_config('globalratelimit', 5, 'aiprovider_openaicompatible');
+        set_config('enableuserratelimit', 1, 'aiprovider_openaicompatible');
+        set_config('userratelimit', 3, 'aiprovider_openaicompatible');
 
         $contextid = 1;
         $userid = 1;
@@ -104,6 +127,7 @@ final class provider_test extends \advanced_testcase {
             numimages: $numimages,
             style: $style,
         );
+        $provider = new provider();
 
         // Make 3 requests, all should be allowed.
         for ($i = 0; $i < 3; $i++) {
@@ -113,12 +137,8 @@ final class provider_test extends \advanced_testcase {
         // The 4th request for the same user should be denied.
         $result = $provider->is_request_allowed($action);
         $this->assertFalse($result['success']);
-        $this->assertEquals(
-            $CFG->branch < 501
-                ? 'User rate limit exceeded'
-                : 'You have reached the maximum number of AI requests you can make in an hour. Try again later.',
-            $result['errormessage']
-        );
+        $this->assertEquals(429, $result['errorcode']);
+        $this->assertEquals('User rate limit exceeded', $result['errormessage']);
 
         // Change user id to make a request for a different user, should pass (4 requests for global rate).
         $action = new \core_ai\aiactions\generate_image(
@@ -138,27 +158,23 @@ final class provider_test extends \advanced_testcase {
         // The 6th request should be denied.
         $result = $provider->is_request_allowed($action);
         $this->assertFalse($result['success']);
-        $this->assertEquals(
-            $CFG->branch < 501
-                ? 'Global rate limit exceeded'
-                : 'The AI service has reached the maximum number of site-wide requests per hour. Try again later.',
-            $result['errormessage'],
-        );
+        $this->assertEquals(429, $result['errorcode']);
+        $this->assertEquals('Global rate limit exceeded', $result['errormessage']);
     }
 
     /**
      * Test is_provider_configured.
      */
     public function test_is_provider_configured(): void {
+        $this->resetAfterTest();
 
         // No configured values.
-        $this->assertFalse($this->provider->is_provider_configured());
+        $provider = new \aiprovider_openaicompatible\provider();
+        $this->assertFalse($provider->is_provider_configured());
 
         // Properly configured values.
-        $updatedprovider = $this->manager->update_provider_instance(
-            provider: $this->provider,
-            config: ['apikey' => '123'],
-        );
-        $this->assertTrue($updatedprovider->is_provider_configured());
+        set_config('apikey', '123', 'aiprovider_openaicompatible');
+        $provider = new \aiprovider_openaicompatible\provider();
+        $this->assertTrue($provider->is_provider_configured());
     }
 }

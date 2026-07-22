@@ -16,7 +16,8 @@
 
 namespace aiprovider_openaicompatible;
 
-use core_ai\form\action_settings_form;
+use core_ai\aiactions;
+use core_ai\rate_limiter;
 use Psr\Http\Message\RequestInterface;
 
 /**
@@ -27,82 +28,206 @@ use Psr\Http\Message\RequestInterface;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class provider extends \core_ai\provider {
+    /** @var string The API key. */
+    private string $apikey;
+
+    /** @var string The organisation ID that goes with the key. */
+    private string $orgid;
+
+    /** @var string The API endpoint (base URL). */
+    private string $apiendpoint;
+
+    /** @var bool Is global rate limiting for the API enabled. */
+    private bool $enableglobalratelimit;
+
+    /** @var int The global rate limit. */
+    private int $globalratelimit;
+
+    /** @var bool Is user rate limiting for the API enabled. */
+    private bool $enableuserratelimit;
+
+    /** @var int The user rate limit. */
+    private int $userratelimit;
+
+    /**
+     * Class constructor.
+     */
+    public function __construct() {
+        $this->apikey = get_config('aiprovider_openaicompatible', 'apikey') ?: '';
+        $this->orgid = get_config('aiprovider_openaicompatible', 'orgid') ?: '';
+        $this->apiendpoint = get_config('aiprovider_openaicompatible', 'apiendpoint') ?: '';
+        $this->enableglobalratelimit = (bool) get_config('aiprovider_openaicompatible', 'enableglobalratelimit');
+        $this->globalratelimit = (int) get_config('aiprovider_openaicompatible', 'globalratelimit');
+        $this->enableuserratelimit = (bool) get_config('aiprovider_openaicompatible', 'enableuserratelimit');
+        $this->userratelimit = (int) get_config('aiprovider_openaicompatible', 'userratelimit');
+    }
+
+    /**
+     * Get the configured API endpoint.
+     *
+     * @return string
+     */
+    public function get_api_endpoint(): string {
+        return $this->apiendpoint;
+    }
+
     /**
      * Get the list of actions that this provider supports.
      *
      * @return array An array of action class names.
      */
-    public static function get_action_list(): array {
+    public function get_action_list(): array {
         return [
             \core_ai\aiactions\generate_text::class,
             \core_ai\aiactions\generate_image::class,
             \core_ai\aiactions\summarise_text::class,
-            \core_ai\aiactions\explain_text::class,
         ];
     }
 
-    #[\Override]
+    /**
+     * Generate a user id.
+     *
+     * @param string $userid The user id.
+     * @return string The generated user id.
+     */
+    public function generate_userid(string $userid): string {
+        global $CFG;
+        return hash('sha256', $CFG->siteidentifier . $userid);
+    }
+
+    /**
+     * Add authentication headers to the request.
+     *
+     * @param RequestInterface $request
+     * @return RequestInterface
+     */
     public function add_authentication_headers(RequestInterface $request): RequestInterface {
-        if (isset($this->config['orgid'])) {
-            return $request
-                ->withAddedHeader('Authorization', "Bearer {$this->config['apikey']}")
-                ->withAddedHeader('OpenAI-Organization', $this->config['orgid']);
-        } else {
-            return $request->withAddedHeader('Authorization', "Bearer {$this->config['apikey']}");
+        $request = $request->withAddedHeader('Authorization', "Bearer {$this->apikey}");
+        if (!empty($this->orgid)) {
+            $request = $request->withAddedHeader('OpenAI-Organization', $this->orgid);
         }
+        return $request;
     }
 
     #[\Override]
-    public static function get_action_settings(
+    public function is_request_allowed(aiactions\base $action): array|bool {
+        $ratelimiter = \core\di::get(rate_limiter::class);
+        $component = \core\component::get_component_from_classname(get_class($this));
+
+        if ($this->enableuserratelimit) {
+            if (
+                !$ratelimiter->check_user_rate_limit(
+                    component: $component,
+                    ratelimit: $this->userratelimit,
+                    userid: $action->get_configuration('userid')
+                )
+            ) {
+                return [
+                    'success' => false,
+                    'errorcode' => 429,
+                    'errormessage' => 'User rate limit exceeded',
+                ];
+            }
+        }
+
+        if ($this->enableglobalratelimit) {
+            if (
+                !$ratelimiter->check_global_rate_limit(
+                    component: $component,
+                    ratelimit: $this->globalratelimit
+                )
+            ) {
+                return [
+                    'success' => false,
+                    'errorcode' => 429,
+                    'errormessage' => 'Global rate limit exceeded',
+                ];
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Get any action settings for this provider.
+     *
+     * @param string $action The action class name.
+     * @param \admin_root $ADMIN The admin root object.
+     * @param string $section The section name.
+     * @param bool $hassiteconfig Whether the current user has moodle/site:config capability.
+     * @return array An array of settings.
+     */
+    public function get_action_settings(
         string $action,
-        array $customdata = []
-    ): action_settings_form|bool {
+        \admin_root $ADMIN,
+        string $section,
+        bool $hassiteconfig
+    ): array {
         $actionname = substr($action, (strrpos($action, '\\') + 1));
-        $customdata['actionname'] = $actionname;
-        $customdata['action'] = $action;
-        if ($actionname === 'generate_text' || $actionname === 'summarise_text' || $actionname === 'explain_text') {
-            return new form\action_generate_text_form(customdata: $customdata);
+        $settings = [];
+
+        if ($actionname === 'generate_text' || $actionname === 'summarise_text') {
+            $settings[] = new \admin_setting_configtext(
+                "aiprovider_openaicompatible/action_{$actionname}_model",
+                new \lang_string("action:{$actionname}:model", 'aiprovider_openaicompatible'),
+                new \lang_string("action:{$actionname}:model_desc", 'aiprovider_openaicompatible'),
+                'gpt-4o',
+                PARAM_TEXT,
+            );
+            $settings[] = new \admin_setting_configtext(
+                "aiprovider_openaicompatible/action_{$actionname}_endpoint",
+                new \lang_string("action:{$actionname}:endpoint", 'aiprovider_openaicompatible'),
+                new \lang_string("action:{$actionname}:endpoint_desc", 'aiprovider_openaicompatible'),
+                '',
+                PARAM_URL,
+            );
+            $settings[] = new \admin_setting_configtextarea(
+                "aiprovider_openaicompatible/action_{$actionname}_systeminstruction",
+                new \lang_string("action:{$actionname}:systeminstruction", 'aiprovider_openaicompatible'),
+                new \lang_string("action:{$actionname}:systeminstruction_desc", 'aiprovider_openaicompatible'),
+                $action::get_system_instruction(),
+                PARAM_TEXT,
+            );
+            $settings[] = new \admin_setting_configtextarea(
+                "aiprovider_openaicompatible/action_{$actionname}_modelextraparams",
+                new \lang_string('modelextraparams', 'aiprovider_openaicompatible'),
+                new \lang_string('modelextraparams_desc', 'aiprovider_openaicompatible'),
+                '',
+                PARAM_RAW,
+            );
         } else if ($actionname === 'generate_image') {
-            return new form\action_generate_image_form(customdata: $customdata);
+            $settings[] = new \admin_setting_configtext(
+                "aiprovider_openaicompatible/action_{$actionname}_model",
+                new \lang_string("action:{$actionname}:model", 'aiprovider_openaicompatible'),
+                new \lang_string("action:{$actionname}:model_desc", 'aiprovider_openaicompatible'),
+                'gpt-image-1',
+                PARAM_TEXT,
+            );
+            $settings[] = new \admin_setting_configtext(
+                "aiprovider_openaicompatible/action_{$actionname}_endpoint",
+                new \lang_string("action:{$actionname}:endpoint", 'aiprovider_openaicompatible'),
+                new \lang_string("action:{$actionname}:endpoint_desc", 'aiprovider_openaicompatible'),
+                '',
+                PARAM_URL,
+            );
+            $settings[] = new \admin_setting_configtextarea(
+                "aiprovider_openaicompatible/action_{$actionname}_modelextraparams",
+                new \lang_string('modelextraparams', 'aiprovider_openaicompatible'),
+                new \lang_string('modelextraparams_desc', 'aiprovider_openaicompatible'),
+                '',
+                PARAM_RAW,
+            );
         }
 
-        return false;
-    }
-
-    #[\Override]
-    public static function get_action_setting_defaults(string $action): array {
-        $actionname = substr($action, (strrpos($action, '\\') + 1));
-        $customdata = [
-            'actionname' => $actionname,
-            'action' => $action,
-            'providername' => 'aiprovider_openaicompatible',
-        ];
-        if ($actionname === 'generate_text' || $actionname === 'summarise_text' || $actionname === 'explain_text') {
-            $mform = new form\action_generate_text_form(customdata: $customdata);
-            return $mform->get_defaults();
-        } else if ($actionname === 'generate_image') {
-            $mform = new form\action_generate_image_form(customdata: $customdata);
-            return $mform->get_defaults();
-        }
-
-        return [];
+        return $settings;
     }
 
     /**
      * Check this provider has the minimal configuration to work.
      *
-     * @return bool Return true if configured.
+     * @return bool
      */
     public function is_provider_configured(): bool {
-        return !empty($this->config['apikey']);
-    }
-
-    /**
-     * Get the API endpoint from the provider configuration.
-     *
-     * @return string|null The API endpoint or null if not set.
-     */
-    public function get_api_endpoint(): ?string {
-        return $this->config['apiendpoint'] ?? null;
+        return !empty($this->apikey);
     }
 }

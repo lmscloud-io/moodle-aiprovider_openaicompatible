@@ -16,7 +16,6 @@
 
 namespace aiprovider_openaicompatible;
 
-use aiprovider_openaicompatible\aimodel\openai_image_base;
 use core\http_client;
 use core_ai\ai_image;
 use GuzzleHttp\Psr7\Request;
@@ -31,20 +30,18 @@ use Psr\Http\Message\ResponseInterface;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class process_generate_image extends abstract_processor {
-    /** @var int The number of images to generate. */
+    /** @var int Number of images to generate. */
     private int $numberimages = 1;
 
     #[\Override]
     protected function query_ai_api(): array {
         $response = parent::query_ai_api();
 
-        // If the request was successful, save the image data to a Moodle draft file.
         if ($response['success']) {
             $fileobj = $this->create_file_from_response(
                 $this->action->get_configuration('userid'),
-                $response
+                $response,
             );
-            // Add the file to the response so placements can use it.
             $response['draftfile'] = $fileobj;
         }
 
@@ -52,99 +49,92 @@ class process_generate_image extends abstract_processor {
     }
 
     /**
-     * Convert the given aspect ratio to an image size compatible with the OpenAI API.
+     * Convert aspect ratio to an image size compatible with the configured model.
      *
-     * Delegates to the model class if one is found for the configured model,
-     * otherwise falls back to a default mapping.
+     * dall-e-3 uses the 1792 wide/tall sizes; gpt-image-1 and anything else uses the 1536 sizes.
      *
-     * @param string $ratio The aspect ratio ('square', 'landscape', or 'portrait').
-     * @return string The size string for the API request (e.g. '1024x1024').
+     * @param string $ratio
+     * @return string
      */
     private function calculate_size(string $ratio): string {
-        $modelclass = helper::get_model_class($this->get_model());
-        if ($modelclass instanceof openai_image_base) {
-            return $modelclass->calculate_size($ratio);
+        if ($this->get_model() === 'dall-e-3') {
+            return match ($ratio) {
+                'square' => '1024x1024',
+                'landscape' => '1792x1024',
+                'portrait' => '1024x1792',
+                default => throw new \coding_exception('Invalid aspect ratio: ' . $ratio),
+            };
         }
-        // Fallback for unknown/custom models.
-        if ($ratio === 'square') {
-            $size = '1024x1024';
-        } else if ($ratio === 'landscape') {
-            $size = '1536x1024';
-        } else if ($ratio === 'portrait') {
-            $size = '1024x1536';
-        } else {
-            throw new \coding_exception('Invalid aspect ratio: ' . $ratio);
-        }
-        return $size;
+
+        return match ($ratio) {
+            'square' => '1024x1024',
+            'landscape' => '1536x1024',
+            'portrait' => '1024x1536',
+            default => throw new \coding_exception('Invalid aspect ratio: ' . $ratio),
+        };
     }
 
     /**
-     * Convert the given quality setting to an API-compatible quality value.
+     * Convert the quality setting to the value expected by the configured model.
      *
-     * Delegates to the model class if one is found for the configured model,
-     * otherwise falls back to a default mapping.
+     * dall-e-3 takes Moodle's own values; gpt-image-1 and anything else expects medium/high.
      *
-     * @param string $quality The quality setting from the action ('standard' or 'hd').
-     * @return string The quality value for the API request.
+     * @param string $quality
+     * @return string
      */
     private function calculate_quality(string $quality): string {
-        $modelclass = helper::get_model_class($this->get_model());
-        if ($modelclass instanceof openai_image_base) {
-            return $modelclass->calculate_quality($quality);
+        if ($this->get_model() === 'dall-e-3') {
+            return match ($quality) {
+                'standard' => 'standard',
+                'hd' => 'hd',
+                default => 'standard',
+            };
         }
-        // Fallback for unknown/custom models.
-        if ($quality === 'standard') {
-            $processedquality = 'medium';
-        } else if ($quality === 'hd') {
-            $processedquality = 'high';
-        } else {
-            throw new \coding_exception('Invalid quality: ' . $quality);
-        }
-        return $processedquality;
+
+        return match ($quality) {
+            'standard' => 'medium',
+            'hd' => 'high',
+            default => throw new \coding_exception('Invalid quality: ' . $quality),
+        };
     }
 
     #[\Override]
     protected function create_request_object(string $userid): RequestInterface {
-        // Create the request object.
+        $model = $this->get_model();
+
         $requestobj = new \stdClass();
-        $requestobj->model = $this->get_model();
+        $requestobj->model = $model;
         $requestobj->user = $userid;
         $requestobj->prompt = $this->action->get_configuration('prompttext');
         $requestobj->n = $this->numberimages;
         $requestobj->quality = $this->calculate_quality($this->action->get_configuration('quality'));
         $requestobj->size = $this->calculate_size($this->action->get_configuration('aspectratio'));
 
-        // Apply model-specific parameters (response_format and output_format).
-        $modelclass = helper::get_model_class($this->get_model());
-        if ($modelclass instanceof openai_image_base) {
-            $responseformat = $modelclass->response_format();
-            if ($responseformat !== null) {
-                $requestobj->response_format = $responseformat;
-            }
-            $outputformat = $modelclass->get_output_format();
-            if ($outputformat !== null) {
-                $requestobj->output_format = $outputformat;
-            }
+        // Model specific response parameters. gpt-image-1 rejects response_format and always
+        // returns base64; dall-e-3 has no output_format and must be asked for base64 explicitly.
+        if ($model === 'gpt-image-1') {
+            $requestobj->output_format = 'png';
+        } else if ($model === 'dall-e-3') {
+            $requestobj->response_format = 'b64_json';
         }
 
-        // Append any extra model settings from admin config.
-        $modelsettings = $this->get_model_settings();
-        foreach ($modelsettings as $setting => $value) {
-            $requestobj->$setting = $value;
+        foreach ($this->get_extra_params() as $key => $value) {
+            $requestobj->{$key} = $value;
         }
 
         return new Request(
-            'POST',
-            '',
-            ['Content-Type' => 'application/json'],
-            json_encode($requestobj)
+            method: 'POST',
+            uri: '',
+            body: json_encode($requestobj),
+            headers: [
+                'Content-Type' => 'application/json',
+            ],
         );
     }
 
     #[\Override]
     protected function handle_api_success(ResponseInterface $response): array {
-        $responsebody = $response->getBody();
-        $bodyobj = json_decode($responsebody->getContents());
+        $bodyobj = json_decode($response->getBody()->getContents());
 
         return [
             'success' => true,
@@ -158,20 +148,15 @@ class process_generate_image extends abstract_processor {
     }
 
     /**
-     * Convert image data from the API response into a Moodle draft file.
+     * Convert image data from the API response into a file in the user's draft area.
      *
      * Handles both inline base64 (b64_json) and remote URL responses.
-     * Placements can't interact with the provider AI directly, so the image
-     * must be stored via the Moodle File API in the user's draft area.
      *
      * @param int $userid The user id.
      * @param array $response Response from the AI provider.
-     * @return \stored_file The stored draft file.
+     * @return \stored_file
      */
-    private function create_file_from_response(
-        int $userid,
-        array $response,
-    ): \stored_file {
+    private function create_file_from_response(int $userid, array $response): \stored_file {
         global $CFG;
 
         require_once("{$CFG->libdir}/filelib.php");
@@ -179,16 +164,14 @@ class process_generate_image extends abstract_processor {
         if (!empty($response['b64json'])) {
             // Preferred path: inline base64, no secondary HTTP call needed.
             $b64json = $response['b64json'];
-            $imagebytes = base64_decode($b64json);
             $outputformat = $response['output_format'] ?? 'png';
             $filename = substr(hash('sha512', $b64json), 0, 16) . '.' . $outputformat;
             $tempdst = make_request_directory() . DIRECTORY_SEPARATOR . $filename;
-            file_put_contents($tempdst, $imagebytes);
+            file_put_contents($tempdst, base64_decode($b64json));
         } else if (!empty($response['sourceurl'])) {
-            // Fallback: download from remote URL.
+            // Fallback: download from the remote URL.
             $url = $response['sourceurl'];
-            $parsedurl = parse_url($url, PHP_URL_PATH);
-            $filename = basename($parsedurl);
+            $filename = basename(parse_url($url, PHP_URL_PATH));
             $tempdst = make_request_directory() . DIRECTORY_SEPARATOR . $filename;
             $client = \core\di::get(http_client::class);
             $client->get($url, [
@@ -199,11 +182,9 @@ class process_generate_image extends abstract_processor {
             throw new \moodle_exception('No image data returned from the AI API.');
         }
 
-        // Add the AI watermark.
         $image = new ai_image($tempdst);
         $image->add_watermark()->save();
 
-        // Store in the user's draft file area.
         $fileinfo = new \stdClass();
         $fileinfo->contextid = \context_user::instance($userid)->id;
         $fileinfo->filearea = 'draft';

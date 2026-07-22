@@ -91,7 +91,7 @@ openaicompatible/
 
 ## Maintainers
 
-**Adorsys GIS**  
+**Adorsys GIS**
 📧 gis-udm@adorsys.com
 
 ## License

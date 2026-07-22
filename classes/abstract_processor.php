@@ -26,7 +26,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\UriInterface;
 
 /**
- * Class process text generation.
+ * Base class for processors.
  *
  * @package    aiprovider_openaicompatible
  * @copyright  2025   Adorsys GIS <gis-udm@adorsys.com>
@@ -34,79 +34,55 @@ use Psr\Http\Message\UriInterface;
  */
 abstract class abstract_processor extends process_base {
     /**
-     * Get the endpoint URI.
+     * Get the short action name (e.g. generate_text).
+     *
+     * @return string
+     */
+    protected function get_action_name(): string {
+        $class = get_class($this->action);
+        return substr($class, strrpos($class, '\\') + 1);
+    }
+
+    /**
+     * Read a per-action setting from plugin config.
+     *
+     * @param string $key
+     * @return string
+     */
+    private function action_config(string $key): string {
+        $value = get_config('aiprovider_openaicompatible', "action_{$this->get_action_name()}_{$key}");
+        return $value === false ? '' : (string) $value;
+    }
+
+    /**
+     * Get the full endpoint URI to send this action's request to.
+     *
+     * The per-action setting is the full URL and is used verbatim. The provider-level setting is
+     * a base URL, to which the action's path is appended. Matches the 5.1 branch, so a site can
+     * be configured the same way on both.
      *
      * @return UriInterface
      */
     protected function get_endpoint(): UriInterface {
-        $endpoint = null;
-        if (!empty($this->provider->actionconfig[$this->action::class]['settings']['endpoint'])) {
-            $endpoint = $this->provider->actionconfig[$this->action::class]['settings']['endpoint'];
-        }
-
-        if (empty($endpoint) && method_exists($this->provider, 'get_api_endpoint')) {
+        $endpoint = $this->action_config('endpoint');
+        if ($endpoint === '') {
             $endpoint = rtrim($this->provider->get_api_endpoint(), '/');
-            if ($this->action instanceof \core_ai\aiactions\generate_image) {
-                $endpoint .= '/images/generations';
-            } else {
-                $endpoint .= '/chat/completions';
+            if ($endpoint !== '') {
+                $endpoint .= $this->action instanceof \core_ai\aiactions\generate_image
+                    ? '/images/generations'
+                    : '/chat/completions';
             }
         }
-
         return new Uri($endpoint);
     }
 
     /**
-     * Get the name of the model to use.
+     * Get the name of the model to use. Configured per action; there is no provider-level default.
      *
      * @return string
      */
     protected function get_model(): string {
-        $model = null;
-        if (!empty($this->provider->actionconfig[$this->action::class]['settings']['model'])) {
-            $model = $this->provider->actionconfig[$this->action::class]['settings']['model'];
-        }
-
-        return $model;
-    }
-
-    /**
-     * Get the model settings.
-     *
-     * @return array
-     */
-    protected function get_model_settings(): array {
-        $settings = $this->provider->actionconfig[$this->action::class]['settings'];
-        $model = $this->get_model();
-
-        // Extract extra params from the form structure if present.
-        if (!empty($settings['modelsettings'][$model]['modelextraparams'])) {
-            $params = json_decode($settings['modelsettings'][$model]['modelextraparams'], true);
-            if (is_array($params)) {
-                foreach ($params as $key => $param) {
-                    $settings[$key] = $param;
-                }
-            }
-        } else if (!empty($settings['modelextraparams'])) {
-            // Fallback for older data format.
-            $params = json_decode($settings['modelextraparams'], true);
-            if (is_array($params)) {
-                foreach ($params as $key => $param) {
-                    $settings[$key] = $param;
-                }
-            }
-        }
-
-        // Unset unnecessary settings so they don't get sent to the API.
-        unset(
-            $settings['model'],
-            $settings['endpoint'],
-            $settings['systeminstruction'],
-            $settings['providerid'],
-            $settings['modelextraparams'],
-            $settings['modelsettings'],
-        );
-        return $settings;
+        return $this->action_config('model');
     }
 
     /**
@@ -115,28 +91,37 @@ abstract class abstract_processor extends process_base {
      * @return string
      */
     protected function get_system_instruction(): string {
-        return $this->action::get_system_instruction();
+        $configured = $this->action_config('systeminstruction');
+        return $configured !== '' ? $configured : $this->action::get_system_instruction();
     }
 
     /**
-     * Create the request object to send to the OpenAI API.
+     * Get the decoded extra request parameters configured for this action.
      *
-     * This object contains all the required parameters for the request.
-     *
-     *
+     * @return array
+     */
+    protected function get_extra_params(): array {
+        $raw = $this->action_config('modelextraparams');
+        if ($raw === '') {
+            return [];
+        }
+        $decoded = json_decode($raw, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * Create the request object to send to the API.
      *
      * @param string $userid The user id.
-     * @return RequestInterface The request object to send to the OpenAI API.
+     * @return RequestInterface
      */
-    abstract protected function create_request_object(
-        string $userid,
-    ): RequestInterface;
+    abstract protected function create_request_object(string $userid): RequestInterface;
 
     /**
      * Handle a successful response from the external AI api.
      *
-     * @param ResponseInterface $response The response object.
-     * @return array The response.
+     * @param ResponseInterface $response
+     * @return array
      */
     abstract protected function handle_api_success(ResponseInterface $response): array;
 
@@ -148,87 +133,46 @@ abstract class abstract_processor extends process_base {
         $request = $this->provider->add_authentication_headers($request);
 
         $client = \core\di::get(http_client::class);
-
         try {
-            // Call the external AI service.
             $response = $client->send($request, [
                 'base_uri' => $this->get_endpoint(),
                 RequestOptions::HTTP_ERRORS => false,
             ]);
         } catch (RequestException $e) {
-            // Handle any exceptions.
-            return $this->format_error_response($e->getCode() ?: 500, $e->getMessage());
+            return [
+                'success' => false,
+                'errorcode' => $e->getCode() ?: 500,
+                'errormessage' => $e->getMessage(),
+            ];
         }
 
-        // Double-check the response codes, in case of a non 200 that didn't throw an error.
         $status = $response->getStatusCode();
         if ($status === 200) {
             return $this->handle_api_success($response);
-        } else {
-            return $this->handle_api_error($response, $request);
         }
+        return $this->handle_api_error($response);
     }
 
     /**
      * Handle an error from the external AI api.
      *
-     * @param ResponseInterface $response The response object.
-     * @param RequestInterface|null $request The request object, used to log the endpoint for debugging.
-     * @return array The error response.
+     * @param ResponseInterface $response
+     * @return array
      */
-    protected function handle_api_error(ResponseInterface $response, ?RequestInterface $request = null): array {
+    protected function handle_api_error(ResponseInterface $response): array {
         $status = $response->getStatusCode();
+        $errormessage = $response->getReasonPhrase();
 
-        // For 5xx responses keep just the reason phrase; otherwise use the message from the body.
-        if ($status >= 500 && $status < 600) {
-            $errormessage = $response->getReasonPhrase();
-        } else {
-            $bodycontent = $response->getBody()->getContents();
-            $bodyobj = json_decode($bodycontent);
-            if ($bodyobj && isset($bodyobj->error) && isset($bodyobj->error->message)) {
+        if ($status < 500 || $status >= 600) {
+            $bodyobj = json_decode($response->getBody()->getContents());
+            if ($bodyobj && isset($bodyobj->error->message)) {
                 $errormessage = $bodyobj->error->message;
-            } else if (!empty($bodycontent) && strlen($bodycontent) < 200) {
-                $errormessage = strip_tags($bodycontent);
-            } else {
-                $errormessage = $response->getReasonPhrase();
             }
-        }
-
-        // Log the endpoint that failed for debugging, without exposing it in the user-facing error.
-        if ($request) {
-            $requesturi = (string) $request->getUri();
-            if (!str_starts_with($requesturi, 'http')) {
-                $endpoint = rtrim((string) $this->get_endpoint(), '/');
-                $requesturi = $endpoint . '/' . ltrim($requesturi, '/');
-            }
-            debugging(
-                "aiprovider_openaicompatible: API error {$status} ({$errormessage}) requesting {$requesturi}",
-                DEBUG_DEVELOPER,
-            );
-        }
-
-        return $this->format_error_response($status, $errormessage);
-    }
-
-    /**
-     * Build the error response array, compatible with both Moodle 5.0 and 5.1+.
-     *
-     * Moodle 5.1 introduced \core_ai\error\factory and a required 'error' key in the action
-     * response; Moodle 5.0 has neither. Use the factory when it is available (so we benefit from
-     * core's error handling), otherwise fall back to the plain array that 5.0 expects.
-     *
-     * @param int $errorcode The HTTP status (or exception) code.
-     * @param string $errormessage The error message.
-     * @return array The error response.
-     */
-    protected function format_error_response(int $errorcode, string $errormessage): array {
-        if (class_exists(\core_ai\error\factory::class)) {
-            return \core_ai\error\factory::create($errorcode, $errormessage)->get_error_details();
         }
 
         return [
             'success' => false,
-            'errorcode' => $errorcode,
+            'errorcode' => $status,
             'errormessage' => $errormessage,
         ];
     }
