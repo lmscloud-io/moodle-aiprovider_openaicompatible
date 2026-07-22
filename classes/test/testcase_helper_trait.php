@@ -62,4 +62,33 @@ trait testcase_helper_trait {
 
         return $provider;
     }
+
+    /**
+     * Expected error message when a user rate limit is reached.
+     *
+     * The wording is produced by core and changed in Moodle 5.1 (localised strings); Moodle 5.0
+     * returned fixed English text. Resolve the correct value for the running version.
+     *
+     * @return string
+     */
+    public function get_user_ratelimit_message(): string {
+        global $CFG;
+        if ($CFG->branch < 501) {
+            return 'User rate limit exceeded';
+        }
+        return 'You have reached the maximum number of AI requests you can make in an hour. Try again later.';
+    }
+
+    /**
+     * Expected error message when the global (site-wide) rate limit is reached.
+     *
+     * @return string
+     */
+    public function get_global_ratelimit_message(): string {
+        global $CFG;
+        if ($CFG->branch < 501) {
+            return 'Global rate limit exceeded';
+        }
+        return 'The AI service has reached the maximum number of site-wide requests per hour. Try again later.';
+    }
 }

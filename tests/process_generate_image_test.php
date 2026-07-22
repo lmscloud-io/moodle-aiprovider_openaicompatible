@@ -490,10 +490,7 @@ final class process_generate_image_test extends \advanced_testcase {
         $processor = new process_generate_image($provider, $this->action);
         $result = $processor->process();
         $this->assertEquals(429, $result->get_errorcode());
-        $this->assertEquals(
-            expected: 'You have reached the maximum number of AI requests you can make in an hour. Try again later.',
-            actual: $result->get_errormessage(),
-        );
+        $this->assertEquals($this->get_user_ratelimit_message(), $result->get_errormessage());
         $this->assertFalse($result->get_success());
 
         // Case 3: User rate limit has not been reached for a different user.
@@ -643,10 +640,7 @@ final class process_generate_image_test extends \advanced_testcase {
         $processor = new process_generate_image($provider, $this->action);
         $result = $processor->process();
         $this->assertEquals(429, $result->get_errorcode());
-        $this->assertEquals(
-            expected: 'The AI service has reached the maximum number of site-wide requests per hour. Try again later.',
-            actual: $result->get_errormessage(),
-        );
+        $this->assertEquals($this->get_global_ratelimit_message(), $result->get_errormessage());
         $this->assertFalse($result->get_success());
 
         // Case 3: Global rate limit has been reached for a different user too.
