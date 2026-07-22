@@ -24,7 +24,6 @@ namespace aiprovider_openaicompatible\aimodel;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 interface openai_base {
-
     /** @var int MODEL_TYPE_TEXT Text model type. */
     public const MODEL_TYPE_TEXT = 1;
     /** @var int MODEL_TYPE_IMAGE Image model type. */

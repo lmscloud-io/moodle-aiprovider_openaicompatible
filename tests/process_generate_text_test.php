@@ -32,7 +32,6 @@ use GuzzleHttp\Psr7\Response;
  * @covers     \aiprovider_openaicompatible\abstract_processor
  */
 final class process_generate_text_test extends \advanced_testcase {
-
     use testcase_helper_trait;
 
     /** @var string A successful response in JSON format. */

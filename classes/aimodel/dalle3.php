@@ -26,7 +26,6 @@ use core_ai\aimodel\base;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class dalle3 extends base implements openai_base, openai_image_base {
-
     #[\Override]
     public function get_model_name(): string {
         return 'dall-e-3';

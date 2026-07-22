@@ -43,8 +43,6 @@ $string['action:summarise_text:systeminstruction_help'] = 'This instruction is s
 $string['apiendpoint'] = 'API Endpoint';
 $string['apiendpoint_help'] = 'The base URL for your OpenAI-compatible API (e.g., https://api.openai.com/v1 or https://ai.kivoyo.com/api/v1).';
 $string['apikey'] = 'OpenAI compatible API key';
-$string['model'] = 'Model Name';
-$string['model_help'] = 'The ID of the model to use (e.g., gpt-4, claude-3-opus, llama-3).';
 $string['apikey_help'] = 'The API key used to authenticate requests to your OpenAI-compatible API endpoint.';
 $string['custom_model_name'] = 'Model';
 $string['extraparams'] = 'Extra parameters';
@@ -56,6 +54,8 @@ $string['extraparams_help'] = 'Extra parameters can be configured here. We suppo
 }
 </pre>';
 $string['invalidjson'] = 'Invalid JSON string';
+$string['model'] = 'Model Name';
+$string['model_help'] = 'The ID of the model to use (e.g., gpt-4, claude-3-opus, llama-3).';
 $string['orgid'] = 'OpenAI compatible organization ID';
 $string['orgid_help'] = 'The organization ID used to authenticate requests to your OpenAI-compatible API endpoint. Leave blank if not required by your provider.';
 $string['pluginname'] = 'OpenAI Compatible API provider';

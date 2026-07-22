@@ -28,7 +28,6 @@ use Psr\Http\Message\ResponseInterface;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class process_generate_text extends abstract_processor {
-
     #[\Override]
     protected function get_system_instruction(): string {
         return $this->provider->actionconfig[$this->action::class]['settings']['systeminstruction'];

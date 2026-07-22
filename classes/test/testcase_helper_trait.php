@@ -24,7 +24,6 @@ namespace aiprovider_openaicompatible\test;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 trait testcase_helper_trait {
-
     /**
      * Create the provider object.
      *

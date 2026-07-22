@@ -27,7 +27,6 @@ use MoodleQuickForm;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class gpt4o extends base implements openai_base {
-
     #[\Override]
     public function get_model_name(): string {
         return 'gpt-4o';

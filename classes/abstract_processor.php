@@ -52,7 +52,7 @@ abstract class abstract_processor extends process_base {
                 $endpoint .= '/chat/completions';
             }
         }
-        
+
         return new Uri($endpoint);
     }
 
@@ -66,7 +66,7 @@ abstract class abstract_processor extends process_base {
         if (!empty($this->provider->actionconfig[$this->action::class]['settings']['model'])) {
             $model = $this->provider->actionconfig[$this->action::class]['settings']['model'];
         }
-        
+
         return $model;
     }
 
@@ -78,7 +78,7 @@ abstract class abstract_processor extends process_base {
     protected function get_model_settings(): array {
         $settings = $this->provider->actionconfig[$this->action::class]['settings'];
         $model = $this->get_model();
-        
+
         // Extract extra params from the form structure if present.
         if (!empty($settings['modelsettings'][$model]['modelextraparams'])) {
             $params = json_decode($settings['modelsettings'][$model]['modelextraparams'], true);
@@ -148,7 +148,7 @@ abstract class abstract_processor extends process_base {
         $request = $this->provider->add_authentication_headers($request);
 
         $client = \core\di::get(http_client::class);
-        
+
         try {
             // Call the external AI service.
             $response = $client->send($request, [

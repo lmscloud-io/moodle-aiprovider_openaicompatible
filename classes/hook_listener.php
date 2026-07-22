@@ -28,7 +28,6 @@ use core_ai\hook\after_ai_provider_form_hook;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class hook_listener {
-
     /**
      * Hook listener for the Open AI instance setup form.
      *
@@ -52,8 +51,6 @@ class hook_listener {
         $mform->addHelpButton('apiendpoint', 'apiendpoint', 'aiprovider_openaicompatible');
         $mform->addRule('apiendpoint', get_string('required'), 'required', null, 'client');
 
-
-
         // Required setting to store OpenAI API key.
         $mform->addElement(
             'passwordunmask',
@@ -73,7 +70,6 @@ class hook_listener {
         );
         $mform->setType('orgid', PARAM_TEXT);
         $mform->addHelpButton('orgid', 'orgid', 'aiprovider_openaicompatible');
-
     }
 
     /**

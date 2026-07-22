@@ -105,6 +105,4 @@ class provider extends \core_ai\provider {
     public function get_api_endpoint(): ?string {
         return $this->config['apiendpoint'] ?? null;
     }
-
-
 }

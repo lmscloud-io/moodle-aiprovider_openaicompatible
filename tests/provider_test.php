@@ -25,7 +25,6 @@ namespace aiprovider_openaicompatible;
  * @covers     \aiprovider_openaicompatible\provider
  */
 final class provider_test extends \advanced_testcase {
-
     /** @var \core_ai\manager */
     private $manager;
 

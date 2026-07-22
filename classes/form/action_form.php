@@ -174,9 +174,11 @@ class action_form extends action_settings_form {
         // Determine which model to use as the default.
         // If a model is saved and it's not in the named list (or has extra params), use 'custom' mode.
         // If no model is saved, default to 'custom' so the admin must explicitly name one.
-        if (!empty($this->actionconfig['model']) &&
+        if (
+            !empty($this->actionconfig['model']) &&
                 (!array_key_exists($this->actionconfig['model'], $this->get_model_list($modeltype)) ||
-                !empty($this->actionconfig['modelextraparams']))) {
+                !empty($this->actionconfig['modelextraparams']))
+        ) {
             $defaultmodel = 'custom';
         } else if (empty($this->actionconfig['model'])) {
             $defaultmodel = ($actionname === 'generate_image') ? 'gpt-image-1' : 'gpt-4o';
