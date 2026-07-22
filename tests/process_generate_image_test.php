@@ -53,7 +53,8 @@ final class process_generate_image_test extends \advanced_testcase {
         parent::setUp();
         $this->resetAfterTest();
         // Load a response body from a file.
-        $this->responsebodyjson = file_get_contents(self::get_fixture_path('aiprovider_openaicompatible', 'image_request_success.json'));
+        $fixturepath = self::get_fixture_path('aiprovider_openaicompatible', 'image_request_success.json');
+        $this->responsebodyjson = file_get_contents($fixturepath);
         $this->manager = \core\di::get(\core_ai\manager::class);
         $this->provider = $this->create_provider(
             actionclass: \core_ai\aiactions\generate_image::class,
@@ -118,9 +119,9 @@ final class process_generate_image_test extends \advanced_testcase {
         $this->assertEquals('This is a test prompt', $requestdata->prompt);
         $this->assertEquals('gpt-image-1', $requestdata->model);
         $this->assertEquals('1', $requestdata->n);
-        // gpt-image-1 maps 'hd' quality to 'high'.
+        // The gpt-image-1 model maps 'hd' quality to 'high'.
         $this->assertEquals('high', $requestdata->quality);
-        // gpt-image-1 does not send response_format.
+        // The gpt-image-1 model does not send response_format.
         $this->assertObjectNotHasProperty('response_format', $requestdata);
         $this->assertEquals('1024x1024', $requestdata->size);
     }

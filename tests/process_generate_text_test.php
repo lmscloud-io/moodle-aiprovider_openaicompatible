@@ -53,7 +53,8 @@ final class process_generate_text_test extends \advanced_testcase {
         parent::setUp();
         $this->resetAfterTest();
         // Load a response body from a file.
-        $this->responsebodyjson = file_get_contents(self::get_fixture_path('aiprovider_openaicompatible', 'text_request_success.json'));
+        $fixturepath = self::get_fixture_path('aiprovider_openaicompatible', 'text_request_success.json');
+        $this->responsebodyjson = file_get_contents($fixturepath);
         $this->manager = \core\di::get(\core_ai\manager::class);
         $this->provider = $this->create_provider(
             actionclass: \core_ai\aiactions\generate_text::class,

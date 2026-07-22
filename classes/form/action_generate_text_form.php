@@ -51,7 +51,8 @@ class action_generate_text_form extends action_form {
             'wrap="virtual" rows="5" cols="20"',
         );
         $mform->setType('systeminstruction', PARAM_TEXT);
-        $mform->setDefault('systeminstruction', $this->actionconfig['systeminstruction'] ?? $this->action::get_system_instruction());
+        $systeminstruction = $this->actionconfig['systeminstruction'] ?? $this->action::get_system_instruction();
+        $mform->setDefault('systeminstruction', $systeminstruction);
         $mform->addHelpButton('systeminstruction', "action:{$this->actionname}:systeminstruction", 'aiprovider_openaicompatible');
 
         if ($this->returnurl) {

@@ -43,7 +43,7 @@ class gptimage1 extends base implements openai_base, openai_image_base {
 
     #[\Override]
     public function response_format(): ?string {
-        // gpt-image-1 does not accept response_format as an API parameter.
+        // The gpt-image-1 model does not accept response_format as an API parameter.
         return null;
     }
 

@@ -70,7 +70,7 @@ class dalle3 extends base implements openai_base, openai_image_base {
 
     #[\Override]
     public function get_output_format(): ?string {
-        // DALL-E 3 does not accept output_format
+        // DALL-E 3 does not accept output_format.
         return null;
     }
 }

@@ -77,7 +77,9 @@ class hook_listener {
      *
      * @param after_ai_action_settings_form_hook $hook The hook to add to config action settings.
      */
-    public static function set_model_form_definition_for_aiprovider_openaicompatible(after_ai_action_settings_form_hook $hook): void {
+    public static function set_model_form_definition_for_aiprovider_openaicompatible(
+        after_ai_action_settings_form_hook $hook
+    ): void {
         if ($hook->plugin !== 'aiprovider_openaicompatible') {
             return;
         }
@@ -100,7 +102,8 @@ class hook_listener {
                     ['rows' => 5, 'cols' => 20],
                 );
                 $mform->setType('modelextraparams', PARAM_TEXT);
-                $mform->addElement('static', 'modelextraparams_help', null, get_string('extraparams_help', 'aiprovider_openaicompatible'));
+                $extraparamshelp = get_string('extraparams_help', 'aiprovider_openaicompatible');
+                $mform->addElement('static', 'modelextraparams_help', null, $extraparamshelp);
             } else {
                 $targetmodel = helper::get_model_class($model);
                 if ($targetmodel) {

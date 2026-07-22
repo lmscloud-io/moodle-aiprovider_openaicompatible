@@ -15,12 +15,12 @@
 /**
  * AI provider model selection handler.
  *
- * @module     aiprovider_openai/modelchooser
+ * @module     aiprovider_openaicompatible/modelchooser
  * @copyright  2025   Adorsys GIS <gis-udm@adorsys.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-import { populateFields, clearFields } from 'core_ai/helper';
+import {populateFields, clearFields} from 'core_ai/helper';
 
 const Selectors = {
     fields: {

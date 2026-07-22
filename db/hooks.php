@@ -32,6 +32,7 @@ $callbacks = [
 
     [
         'hook' => \core_ai\hook\after_ai_action_settings_form_hook::class,
-        'callback' => \aiprovider_openaicompatible\hook_listener::class . '::set_model_form_definition_for_aiprovider_openaicompatible',
+        'callback' => \aiprovider_openaicompatible\hook_listener::class .
+            '::set_model_form_definition_for_aiprovider_openaicompatible',
     ],
 ];
