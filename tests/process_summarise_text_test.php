@@ -331,6 +331,8 @@ final class process_summarise_text_test extends \advanced_testcase {
         $this->assertEquals('summarise_text', $result->get_actionname());
         $this->assertEquals(401, $result->get_errorcode());
         $this->assertEquals('Invalid Authentication', $result->get_errormessage());
+        // The failing endpoint is logged for developers, not exposed in the user-facing error.
+        $this->assertDebuggingCalled();
     }
 
     /**

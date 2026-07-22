@@ -157,11 +157,7 @@ abstract class abstract_processor extends process_base {
             ]);
         } catch (RequestException $e) {
             // Handle any exceptions.
-            return [
-                'success' => false,
-                'errorcode' => $e->getCode() ?: 500,
-                'errormessage' => $e->getMessage(),
-            ];
+            return $this->format_error_response($e->getCode() ?: 500, $e->getMessage());
         }
 
         // Double-check the response codes, in case of a non 200 that didn't throw an error.
@@ -177,48 +173,63 @@ abstract class abstract_processor extends process_base {
      * Handle an error from the external AI api.
      *
      * @param ResponseInterface $response The response object.
-     * @param RequestInterface|null $request The request object.
+     * @param RequestInterface|null $request The request object, used to log the endpoint for debugging.
      * @return array The error response.
      */
     protected function handle_api_error(ResponseInterface $response, ?RequestInterface $request = null): array {
         $status = $response->getStatusCode();
-        $errormessage = 'API Error: ' . $response->getReasonPhrase() . ' (' . $status . ')';
-        
-        // Append URI if available for debugging
-        if ($request) {
-            $requesturi = (string) $request->getUri();
-            // If the request URI is absolute (starts with http), display it as is.
-            if (str_starts_with($requesturi, 'http')) {
-                $errormessage .= ' requesting ' . $requesturi;
-            } else {
-                // Otherwise prepend the endpoint.
-                $effectiveurl = (string) $this->get_endpoint();
-                if (substr($effectiveurl, -1) !== '/') {
-                    $effectiveurl .= '/';
-                }
-                $effectiveurl .= $requesturi;
-                $errormessage .= ' requesting ' . $effectiveurl;
-            }
-        }
 
+        // For 5xx responses keep just the reason phrase; otherwise use the message from the body.
         if ($status >= 500 && $status < 600) {
-            // Keep reason phrase for 5xx
+            $errormessage = $response->getReasonPhrase();
         } else {
             $bodycontent = $response->getBody()->getContents();
             $bodyobj = json_decode($bodycontent);
             if ($bodyobj && isset($bodyobj->error) && isset($bodyobj->error->message)) {
-                $errormessage .= ' - ' . $bodyobj->error->message;
+                $errormessage = $bodyobj->error->message;
+            } else if (!empty($bodycontent) && strlen($bodycontent) < 200) {
+                $errormessage = strip_tags($bodycontent);
             } else {
-                if (!empty($bodycontent) && strlen($bodycontent) < 200) {
-                    $errormessage .= ' - ' . strip_tags($bodycontent);
-                }
+                $errormessage = $response->getReasonPhrase();
             }
+        }
+
+        // Log the endpoint that failed for debugging, without exposing it in the user-facing error.
+        if ($request) {
+            $requesturi = (string) $request->getUri();
+            if (!str_starts_with($requesturi, 'http')) {
+                $endpoint = rtrim((string) $this->get_endpoint(), '/');
+                $requesturi = $endpoint . '/' . ltrim($requesturi, '/');
+            }
+            debugging(
+                "aiprovider_openaicompatible: API error {$status} ({$errormessage}) requesting {$requesturi}",
+                DEBUG_DEVELOPER,
+            );
+        }
+
+        return $this->format_error_response($status, $errormessage);
+    }
+
+    /**
+     * Build the error response array, compatible with both Moodle 5.0 and 5.1+.
+     *
+     * Moodle 5.1 introduced \core_ai\error\factory and a required 'error' key in the action
+     * response; Moodle 5.0 has neither. Use the factory when it is available (so we benefit from
+     * core's error handling), otherwise fall back to the plain array that 5.0 expects.
+     *
+     * @param int $errorcode The HTTP status (or exception) code.
+     * @param string $errormessage The error message.
+     * @return array The error response.
+     */
+    protected function format_error_response(int $errorcode, string $errormessage): array {
+        if (class_exists(\core_ai\error\factory::class)) {
+            return \core_ai\error\factory::create($errorcode, $errormessage)->get_error_details();
         }
 
         return [
             'success' => false,
-            'errorcode' => (int) $status,
-            'errormessage' => (string) $errormessage,
+            'errorcode' => $errorcode,
+            'errormessage' => $errormessage,
         ];
     }
 }

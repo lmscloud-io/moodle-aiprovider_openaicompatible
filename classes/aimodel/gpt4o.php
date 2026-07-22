@@ -38,7 +38,11 @@ class gpt4o extends base implements openai_base {
         return 'GPT-4o';
     }
 
-    #[\Override]
+    /**
+     * Get all settings that can be configured for a model.
+     *
+     * @return string[] Array of settings.
+     */
     public function get_model_settings(): array {
         return [
             'top_p' => [
